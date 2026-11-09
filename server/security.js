@@ -55,6 +55,13 @@ function tokenEquals(a) {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
+/** 常量时间比较两个字符串。 */
+export function safeEqual(a, b) {
+  const x = Buffer.from(String(a || ''));
+  const y = Buffer.from(String(b || ''));
+  return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y);
+}
+
 /** 所有 /api 请求：自定义头里的令牌（会触发 CORS 预检，跨站无法伪造）+ Origin 校验。 */
 export function apiGuard(req, res, next) {
   const origin = req.headers.origin;

@@ -1,5 +1,5 @@
 // 安全的 DOM 构造：只用 textContent / 属性白名单，永不 innerHTML。
-const ATTRS = new Set(['class', 'id', 'type', 'value', 'title', 'for', 'name', 'placeholder', 'min', 'max', 'step', 'rows', 'cols', 'checked', 'disabled', 'selected', 'open', 'colspan', 'role', 'aria-label', 'aria-expanded', 'accept', 'multiple', 'href', 'viewBox', 'd', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'points', 'r', 'cx', 'cy', 'width', 'height', 'text-anchor', 'dominant-baseline', 'tabindex', 'data-id', 'spellcheck', 'autocomplete', 'target', 'rel', 'maxlength', 'inputmode', 'aria-live']);
+const ATTRS = new Set(['class', 'id', 'type', 'value', 'title', 'for', 'name', 'placeholder', 'min', 'max', 'step', 'rows', 'cols', 'checked', 'disabled', 'selected', 'open', 'colspan', 'role', 'aria-label', 'aria-expanded', 'accept', 'multiple', 'href', 'viewBox', 'd', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'points', 'r', 'cx', 'cy', 'width', 'height', 'text-anchor', 'dominant-baseline', 'tabindex', 'data-id', 'spellcheck', 'autocomplete', 'target', 'rel', 'maxlength', 'inputmode', 'aria-live', 'aria-hidden']);
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SVG_TAGS = new Set(['svg', 'path', 'line', 'polyline', 'polygon', 'circle', 'text', 'g', 'rect']);
 

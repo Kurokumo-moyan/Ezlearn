@@ -67,7 +67,9 @@ Ezlearn 是本机单用户软件。它处理两类不可信输入：**上传的�
 - **不需要管理员权限**：安装到 `%LOCALAPPDATA%\Programs\Ezlearn`，只写当前用户的注册表（`HKCU\...\Uninstall\Ezlearn`）和快捷方式；清单声明 `asInvoker`，避免 Windows 因文件名含 Setup 自动提权。
 - **Node.js**：安装时先找电脑上已有的 Node.js（≥ 22，运行 `node -v` 验证）。有就记录它的路径直接使用；没有就把内置的官方 `node.exe`（构建时复制自构建机，附带其 LICENSE）解压到安装目录的 `runtime\`。卸载只删 `runtime\`，**从不碰用户自己装的 Node.js**。
 - **解压**：安装包里的每个路径都检查必须落在安装目录内（防 Zip Slip）；安装目录一律以 `\Ezlearn` 结尾；目标文件夹已存在且没有 Ezlearn 安装标记时拒绝覆盖。
-- **启动器**：后台服务以 `CreateNoWindow` 隐藏运行，输出写入 `%LOCALAPPDATA%\Ezlearn\logs\server.log`；界面用 Edge（或 Chrome）的 `--app` 窗口打开，使用独立的浏览器配置目录，不读写你平时浏览器的数据。启动前清除会改变监听地址 / 数据目录的环境变量（`EZLEARN_HOST`、`EZLEARN_PORT`、`EZLEARN_DATA_DIR`、`NODE_OPTIONS` 等）。
-- **自动退出**：由启动器拉起时，页面每 30 秒发心跳；2 分钟没有心跳且没有任务在运行，服务自动退出。`/api/shutdown` 只在这种模式下可用，有任务运行时需要再次确认。
-- **卸载**：只结束命令行里包含本安装目录的 `node.exe`，以及使用 Ezlearn 浏览器配置目录的 Edge / Chrome 进程。整目录删除前检查：路径不是盘符根、用户目录、系统目录、桌面、文档等，且目录里有 `ezlearn-install.json` 标记；数据目录只允许删除固定的 `%APPDATA%\Ezlearn` 与 `%LOCALAPPDATA%\Ezlearn`。删除课程数据需要勾选并再次确认（静默模式可用 `/KeepData` 保留）。卸载程序先复制到临时目录运行，等原进程退出后再删，结束后临时副本自行删除。
+- **启动器**：后台服务以 `CreateNoWindow` 隐藏运行，输出写入 `%LOCALAPPDATA%\Ezlearn\logs\server.log`。
+- **桌面窗口**（`installer/AppWindow.cs`，WebView2，数据目录 `%LOCALAPPDATA%\Ezlearn\webview2`）：只允许打开 `http://127.0.0.1:5855/` 的页面，其他导航一律取消，`https://` 外链交给默认浏览器；`window.open` 不开新窗口；关闭开发者工具、状态栏、宿主对象注入、密码和表单自动保存；拒绝摄像头 / 麦克风 / 定位 / 通知等全部权限请求；禁止下载和外部协议。页面发给窗口的消息只接受本机来源，且只有固定的几条命令（最小化 / 最大化 / 关闭 / 拖动 / 边框颜色）。没有 WebView2 运行时时退回 Edge / Chrome 的 `--app` 窗口（独立配置目录）。
+- **关窗退出**：启动器每次启动服务时生成 256 位随机控制口令（存于当前用户的 `%LOCALAPPDATA%\Ezlearn\control.token`，经环境变量交给服务）。关窗时用它请求 `POST /control/shutdown`：必须带正确的自定义请求头、不能带 `Origin`（网页发不出这种请求），有任务在运行时拒绝。启动前清除会改变监听地址 / 数据目录的环境变量（`EZLEARN_HOST`、`EZLEARN_PORT`、`EZLEARN_DATA_DIR`、`NODE_OPTIONS` 等）。
+- **自动退出（后备）**：由启动器拉起时，页面每 30 秒发心跳；2 分钟没有心跳且没有任务在运行，服务自动退出。`/api/shutdown` 只在这种模式下可用，有任务运行时需要再次确认。
+- **卸载**：只结束命令行里包含本安装目录的 `Ezlearn.exe` / `node.exe`，以及使用 Ezlearn 自己配置目录的 WebView2 / Edge / Chrome 进程。整目录删除前检查：路径不是盘符根、用户目录、系统目录、桌面、文档等，且目录里有 `ezlearn-install.json` 标记；数据目录只允许删除固定的 `%APPDATA%\Ezlearn` 与 `%LOCALAPPDATA%\Ezlearn`。删除课程数据需要勾选并再次确认（静默模式可用 `/KeepData` 保留）。卸载程序先复制到临时目录运行，等原进程退出后再删，结束后临时副本自行删除。
 - **代码签名**：安装包没有代码签名，Windows SmartScreen 会提示“Windows 已保护你的电脑”。构建时会生成 `.sha256` 校验文件，从别人那里拿到安装包时可以对照校验值。

@@ -2,6 +2,7 @@ import { h, clear, modal, toast } from './dom.js';
 import { api, paths } from './api.js';
 import { renderBlocks, rich, anchor } from './render.js';
 import { mountProgress, onJobFinished, refreshJobs, localTask } from './progress.js';
+import { mountTitlebar, setTitleContext, syncHostBackground } from './titlebar.js';
 
 const $app = document.getElementById('app');
 let pollTimer = null;
@@ -30,7 +31,9 @@ const dots = (w) => '●'.repeat(Math.max(0, Math.min(3, w | 0)));
 const fmtTime = (iso) => { if (!iso) return ''; const d = new Date(iso); return Number.isNaN(+d) ? '' : d.toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }); };
 const readHref = (cid, chid, anc) => `#/c/${encodeURIComponent(cid)}/read${chid ? `/${encodeURIComponent(chid)}` : ''}${chid && anc ? `/${encodeURIComponent(anc)}` : ''}`;
 
-// ---------------- 顶部进度窗口 ----------------
+// ---------------- 标题栏 + 顶部进度窗口 ----------------
+mountTitlebar(titlebarButtons());
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => setTimeout(syncHostBackground, 50));
 mountProgress((code, job) => {
   if (code === 'budget') { sessionStorage.setItem('ez-open-budget', job.course_id); location.hash = `#/c/${encodeURIComponent(job.course_id)}`; if (location.hash === `#/c/${job.course_id}`) route(); }
   else location.hash = '#/settings';
@@ -65,7 +68,8 @@ function plainLayout(...kids) {
   return content;
 }
 
-function themeButtons({ settings = true } = {}) {
+// 标题栏上的按钮：历史课程、主题、英文术语开关、设置（替代原来散落在各页面顶部的按钮）
+function titlebarButtons() {
   const label = () => ({ system: '主题：跟随系统', light: '主题：白天', dark: '主题：黑夜' })[store.get('ez-theme', 'system')];
   const t = h('button', { class: 'btn' }, label());
   t.addEventListener('click', () => {
@@ -73,11 +77,12 @@ function themeButtons({ settings = true } = {}) {
     store.set('ez-theme', order[(order.indexOf(store.get('ez-theme', 'system')) + 1) % 3]);
     applyTheme();
     t.textContent = label();
+    syncHostBackground();
     window.dispatchEvent(new Event('themechange'));
   });
   const en = h('button', { class: 'btn' }, store.get('ez-en-off', false) ? '显示英文术语' : '隐藏英文术语');
   en.addEventListener('click', () => { store.set('ez-en-off', !store.get('ez-en-off', false)); applyTheme(); en.textContent = store.get('ez-en-off', false) ? '显示英文术语' : '隐藏英文术语'; });
-  return [t, en, settings ? h('a', { class: 'btn', href: '#/settings' }, '⚙ 设置') : null];
+  return [h('a', { class: 'btn', href: '#/' }, '历史课程'), t, en, h('a', { class: 'btn', href: '#/settings' }, '⚙ 设置')];
 }
 
 function llmNotices(status) {
@@ -111,9 +116,9 @@ async function home() {
   } }, '导入示例课程');
   const hasDemo = courses.some((c) => c.demo);
 
+  setTitleContext('');
   plainLayout(
-    h('div', { class: 'row' }, h('h1', null, 'Ezlearn 通用学习软件'), h('span', { class: 'spacer' }), themeButtons()),
-    h('p', { class: 'muted' }, '把一门课的教学资料变成按课程结构组织、零基础可读、每个结论可追溯、带交互演示的学习书。所有数据只保存在本机。'),
+    h('p', { class: 'muted home-intro' }, '把一门课的教学资料变成按课程结构组织、零基础可读、每个结论可追溯、带交互演示的学习书。所有数据只保存在本机。'),
     llmNotices(status),
     status.llm.mode === 'api' ? h('p', { class: 'small muted' }, `当前模型：${status.llm.provider_label} · ${status.llm.model}。生成内容时，所选资料会发送给该服务商处理。`, h('a', { href: '#/settings' }, '更换')) : null,
     h('div', { class: 'card' }, h('div', { class: 'row' }, h('h3', null, '历史课程'), h('span', { class: 'spacer' }), hasDemo ? null : demoBtn),
@@ -146,9 +151,8 @@ function historyRow(c) {
 // ---------------- 设置 ----------------
 async function settingsPage() {
   const [s, status] = await Promise.all([api.get('/settings'), api.get('/status')]);
-  const content = plainLayout(
-    h('div', { class: 'row' }, h('a', { href: '#/' }, '← 返回首页'), h('span', { class: 'spacer' }), themeButtons({ settings: false })),
-    h('h1', null, '设置'));
+  setTitleContext('设置');
+  const content = plainLayout(h('h1', null, '设置'));
 
   // --- AI 模型 ---
   const provSel = h('select', { 'aria-label': 'AI 公司' }, s.providers.map((p) => h('option', { value: p.id, selected: p.id === s.provider }, p.label)));
@@ -284,8 +288,8 @@ async function studio(cid) {
   const busy = d.job?.status === 'running';
 
   const budgetBtn = h('button', { class: 'btn', onclick: () => raiseBudget(cid, d) }, '提高上限');
+  setTitleContext(`${course.code} · 管理`);
   content.add(
-    h('div', { class: 'row' }, h('a', { href: '#/' }, '← 历史课程'), h('span', { class: 'spacer' }), themeButtons()),
     h('div', { class: 'row' }, h('h1', null, `${course.code} ${course.title}`), h('span', { class: 'spacer' }),
       h('a', { class: 'btn', href: readHref(cid) }, '打开学习书'),
       h('button', { class: 'btn danger', onclick: async () => {
@@ -625,7 +629,7 @@ async function reader(cid, chid, anc) {
   const content = h('div', { id: 'content' });
   const sidebar = h('aside', { id: 'sidebar' },
     h('div', { id: 'sb-head' }, h('div', { class: 'brand' }, course.code), h('div', { class: 'sub' }, course.title), search),
-    nav, h('div', { id: 'sb-foot' }, themeButtons({ settings: false }), h('a', { class: 'btn', href: '#/' }, '历史课程'), h('a', { class: 'btn', href: `#/c/${encodeURIComponent(cid)}` }, '管理')));
+    nav, h('div', { id: 'sb-foot' }, h('a', { class: 'btn', href: '#/' }, '历史课程'), h('a', { class: 'btn', href: `#/c/${encodeURIComponent(cid)}` }, '管理这门课')));
   clear($app).add(
     h('button', { id: 'menu-btn', class: 'btn', onclick: () => document.body.classList.toggle('sb-open') }, '☰ 目录'),
     h('div', { id: 'scrim', onclick: () => document.body.classList.remove('sb-open') }),
@@ -635,6 +639,7 @@ async function reader(cid, chid, anc) {
   const order = d.plan?.chapters?.map((c) => c.id) || [];
   const chapters = [...d.chapters].sort((a, b) => (order.indexOf(a.id) - order.indexOf(b.id)) || String(a.number).localeCompare(String(b.number), undefined, { numeric: true }));
   const chTitle = new Map(chapters.map((c) => [c.id, `${c.number} ${c.title}`]));
+  setTitleContext(chid && chTitle.get(chid) ? `${course.code} · ${chTitle.get(chid)}` : `${course.code} ${course.title}`);
   let chapter = null;
   if (chid) {
     if (!chapterCache.has(`${cid}/${chid}`)) chapterCache.set(`${cid}/${chid}`, api.get(paths.chapter(cid, chid)));

@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeIcon } from '../installer/make-icon.mjs';
+import { fetchWebView2, WEBVIEW2_VERSION } from './fetch-webview2.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUILD = path.join(ROOT, 'build');
@@ -75,7 +76,9 @@ makeIcon(ICO);
 const SRC = path.join(ROOT, 'installer');
 const REFS = ['System.dll', 'System.Core.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll', 'System.Management.dll', 'System.IO.Compression.dll', 'System.IO.Compression.FileSystem.dll'];
 function csc(out, sources, extra = []) {
-  const args = ['/nologo', '/target:winexe', '/optimize+', '/platform:anycpu', '/codepage:65001', `/out:${out}`, `/win32icon:${ICO}`, `/win32manifest:${path.join(SRC, 'app.manifest')}`,
+  const platform = extra.find((x) => x.startsWith('/platform:')) || '/platform:anycpu';
+  extra = extra.filter((x) => !x.startsWith('/platform:'));
+  const args = ['/nologo', '/target:winexe', '/optimize+', platform, '/codepage:65001', `/out:${out}`, `/win32icon:${ICO}`, `/win32manifest:${path.join(SRC, 'app.manifest')}`,
     ...REFS.map((r) => `/r:${r}`), ...extra, ...sources.map((s) => path.join(SRC, s))];
   try {
     execFileSync(CSC, args, { stdio: 'pipe' });
@@ -84,7 +87,14 @@ function csc(out, sources, extra = []) {
   }
   log(`compiled ${path.relative(ROOT, out)}`);
 }
-csc(path.join(STAGE, 'Ezlearn.exe'), ['Common.cs', 'Launcher.cs']);
+// 桌面窗口用 WebView2：SDK 从 nuget.org 下载并校验 Microsoft 签名，3 个 DLL 和 Ezlearn.exe 放在一起
+const WV2 = await fetchWebView2();
+for (const f of ['Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinForms.dll', 'WebView2Loader.dll']) fs.copyFileSync(path.join(WV2, f), path.join(STAGE, f));
+log(`WebView2 SDK ${WEBVIEW2_VERSION} (Microsoft-signed)`);
+csc(path.join(STAGE, 'Ezlearn.exe'), ['Common.cs', 'Launcher.cs', 'AppWindow.cs'], [
+  '/platform:x64', // WebView2Loader.dll 是 x64 版；内置 Node.js 也是 x64
+  `/r:${path.join(WV2, 'Microsoft.Web.WebView2.Core.dll')}`, `/r:${path.join(WV2, 'Microsoft.Web.WebView2.WinForms.dll')}`,
+]);
 csc(path.join(STAGE, 'Uninstall.exe'), ['Common.cs', 'Uninstall.cs']);
 
 // ---------- 6. 打包 payload.zip，编译安装程序 ----------

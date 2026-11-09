@@ -93,7 +93,9 @@ namespace Ezlearn
 
             report(2, "正在检查旧版本……");
             // 升级：先停掉正在运行的旧版本（只停这个目录里的 Ezlearn）
+            Common.KillByCommandLine("Ezlearn.exe", dir);
             Common.KillByCommandLine("node.exe", Path.Combine(dir, "app", "server", "index.js"));
+            Common.KillByCommandLine("msedgewebview2.exe", Common.WebViewDataDir);
             if (Directory.Exists(dir))
             {
                 string why;

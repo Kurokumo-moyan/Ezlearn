@@ -102,7 +102,9 @@ namespace Ezlearn
             if (!Common.IsSafeInstallDir(installDir, out why)) { left.Add(installDir + "（" + why + "，未删除）"); return left; }
 
             report("正在关闭 Ezlearn……");
+            Common.KillByCommandLine("Ezlearn.exe", installDir);
             Common.KillByCommandLine("node.exe", Path.Combine(installDir, "app", "server", "index.js"));
+            Common.KillByCommandLine("msedgewebview2.exe", Common.WebViewDataDir);
             Common.KillByCommandLine("msedge.exe", Common.BrowserProfileDir);
             Common.KillByCommandLine("chrome.exe", Common.BrowserProfileDir);
             Thread.Sleep(800);

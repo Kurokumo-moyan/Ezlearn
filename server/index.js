@@ -4,11 +4,11 @@ import util from 'node:util';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { config, ROOT } from './config.js';
-import { hostGuard, securityHeaders, apiGuard, SESSION_TOKEN, safeLog } from './security.js';
+import { hostGuard, securityHeaders, apiGuard, SESSION_TOKEN, safeLog, safeEqual } from './security.js';
 import { ensureDataDir } from './storage.js';
 import { api } from './routes.js';
 import { llmStatus } from './llm.js';
-import { setShutdown, idleMs, touch } from './lifecycle.js';
+import { setShutdown, idleMs, touch, requestShutdown, canShutdown } from './lifecycle.js';
 import { runningJobCount } from './pipeline.js';
 
 const require = createRequire(import.meta.url);
@@ -23,6 +23,16 @@ export function createApp() {
 
   // 启动器用来判断服务是否已在运行；不含任何信息
   app.get('/healthz', (_req, res) => res.type('text/plain').send('ezlearn'));
+
+  // 桌面启动器专用：关窗时请服务退出。凭启动器生成的一次性控制口令（自定义请求头，网页无法跨站伪造），
+  // 带 Origin 的请求（来自网页）一律拒绝；有任务在运行时不退出。
+  app.post('/control/shutdown', (req, res) => {
+    const token = process.env.EZLEARN_CONTROL_TOKEN || '';
+    if (req.headers.origin || token.length < 32 || !safeEqual(req.get('x-ezlearn-control'), token) || !canShutdown()) return res.status(403).end();
+    if (runningJobCount() > 0) return res.status(409).json({ running: true });
+    res.json({ ok: true });
+    setTimeout(requestShutdown, 100);
+  });
 
   // API：令牌 + Origin 校验，JSON 体积上限
   app.use('/api', apiGuard, express.json({ limit: config.limits.jsonBody, strict: true }), api);

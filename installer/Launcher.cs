@@ -1,9 +1,15 @@
-// Ezlearn.exe：双击启动。没有任何命令行窗口：后台服务隐藏运行，界面在一个独立的应用窗口里打开。
-// 窗口关掉后，服务在两分钟内自动退出（服务端心跳逻辑），不留后台进程。
+// Ezlearn.exe：双击启动的桌面程序。
+// - 没有命令行窗口：后台服务隐藏运行，输出写日志文件；
+// - 界面是一个没有系统标题栏的桌面窗口（AppWindow，WebView2），标题和窗口按钮在软件界面顶部；
+// - 同一时间只开一个窗口：再次双击会把已有窗口调到前面；
+// - 关掉窗口时请后台服务退出（有任务在跑就等它做完再退）。
+// 测试参数：/Render=png（启动画面截图）  /NoWindow（只启动服务）  /SelfTest=结果.txt（离屏打开窗口自检）
 using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -12,7 +18,8 @@ namespace Ezlearn
 {
     internal static class Launcher
     {
-        static bool noWindow;
+        const string ShowEventName = @"Local\EzlearnShowWindow";
+
         [STAThread]
         static int Main(string[] args)
         {
@@ -21,24 +28,72 @@ namespace Ezlearn
 
             string render = Common.Arg(args, "Render");
             if (render != null) { RenderSplash(render); return 0; }
-            noWindow = Common.Arg(args, "NoWindow") != null; // 测试用：只启动后台服务，不打开窗口
+            bool noWindow = Common.Arg(args, "NoWindow") != null;
+            string selfTest = Common.Arg(args, "SelfTest");
 
             bool created;
             using (var mutex = new Mutex(true, @"Local\EzlearnLauncher", out created))
             {
-                if (Common.ServerAlive()) { OpenWindow(); return 0; }
-                if (!created)
+                if (!created && selfTest == null)
                 {
-                    // 另一个启动器正在启动服务：等它起来再开窗口
-                    for (int i = 0; i < 60 && !Common.ServerAlive(); i++) Thread.Sleep(500);
-                    if (Common.ServerAlive()) OpenWindow();
+                    // 已经有一个 Ezlearn 窗口：让它显示到最前面
+                    try { using (var ev = EventWaitHandle.OpenExisting(ShowEventName)) ev.Set(); } catch { }
                     return 0;
                 }
-                return StartAndOpen();
+
+                Splash splash = null;
+                if (!Common.ServerAlive())
+                {
+                    splash = selfTest == null ? new Splash() : null;
+                    if (splash != null) { splash.Show(); Application.DoEvents(); }
+                    int rc = StartServer(splash);
+                    if (rc != 0) { if (splash != null) splash.Close(); return rc; }
+                }
+                if (noWindow) { if (splash != null) splash.Close(); return 0; }
+
+                if (!WebViewAvailable())
+                {
+                    // 电脑上没有 WebView2 运行时（极少见，Win11 自带）：退回到 Edge / Chrome 的应用窗口
+                    if (splash != null) { splash.SetProgress(100, "正在打开窗口……"); Thread.Sleep(500); splash.Close(); }
+                    OpenBrowserWindow();
+                    return 0;
+                }
+                if (splash != null) splash.SetProgress(100, "正在打开窗口……");
+
+                using (var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName))
+                {
+                    var win = new AppWindow(splash, selfTest);
+                    var watcher = new Thread(() =>
+                    {
+                        while (true)
+                        {
+                            showEvent.WaitOne();
+                            try
+                            {
+                                win.BeginInvoke((Action)(() =>
+                                {
+                                    if (win.WindowState == FormWindowState.Minimized) win.WindowState = FormWindowState.Normal;
+                                    win.Activate();
+                                }));
+                            }
+                            catch { return; }
+                        }
+                    }) { IsBackground = true };
+                    watcher.Start();
+                    Application.Run(win);
+                }
+                RequestShutdownIfIdle();
+                return 0;
             }
         }
 
         static string InstallDir { get { return AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\'); } }
+
+        static bool WebViewAvailable()
+        {
+            try { return !string.IsNullOrEmpty(Microsoft.Web.WebView2.Core.CoreWebView2Environment.GetAvailableBrowserVersionString()); }
+            catch { return false; }
+        }
 
         static string ResolveNode()
         {
@@ -52,24 +107,31 @@ namespace Ezlearn
             return Common.FindSystemNode(out v);
         }
 
-        static int StartAndOpen()
+        static void Fail(Splash splash, string msg, MessageBoxIcon icon)
         {
-            var splash = new Splash();
-            splash.Show();
-            Application.DoEvents();
+            if (splash != null) splash.Close();
+            MessageBox.Show(msg, "Ezlearn", MessageBoxButtons.OK, icon);
+        }
 
+        static int StartServer(Splash splash)
+        {
             string node = ResolveNode();
             if (node == null)
             {
-                splash.Close();
-                MessageBox.Show("找不到可用的 Node.js（Ezlearn 需要它才能运行）。\n\n可能是电脑上原来的 Node.js 被卸载了。请重新运行 Ezlearn 安装程序，它会自动安装一份内置的 Node.js。",
-                    "Ezlearn 无法启动", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Fail(splash, "找不到可用的 Node.js（Ezlearn 需要它才能运行）。\n\n可能是电脑上原来的 Node.js 被卸载了。请重新运行 Ezlearn 安装程序，它会自动安装一份内置的 Node.js。", MessageBoxIcon.Error);
                 return 1;
             }
 
             Directory.CreateDirectory(Common.LogDir);
             string log = Path.Combine(Common.LogDir, "server.log");
             string appDir = Path.Combine(InstallDir, "app");
+
+            // 控制口令：关窗时凭它请服务退出。每次启动重新生成，保存在当前用户自己的目录里。
+            var bytes = new byte[32];
+            using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(bytes);
+            string control = BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
+            try { File.WriteAllText(Common.ControlTokenFile, control); } catch { }
+
             var psi = new ProcessStartInfo(node, "\"" + Path.Combine(appDir, "server", "index.js") + "\"")
             {
                 WorkingDirectory = appDir,
@@ -79,47 +141,46 @@ namespace Ezlearn
             };
             psi.EnvironmentVariables["EZLEARN_LAUNCHER"] = "1";
             psi.EnvironmentVariables["EZLEARN_LOG_FILE"] = log;
-            psi.EnvironmentVariables.Remove("EZLEARN_HOST");
-            psi.EnvironmentVariables.Remove("EZLEARN_PORT");
-            psi.EnvironmentVariables.Remove("EZLEARN_DATA_DIR");
-            psi.EnvironmentVariables.Remove("EZLEARN_FAKE_LLM");
-            psi.EnvironmentVariables.Remove("NODE_OPTIONS");
+            psi.EnvironmentVariables["EZLEARN_CONTROL_TOKEN"] = control;
+            foreach (var k in new[] { "EZLEARN_HOST", "EZLEARN_PORT", "EZLEARN_DATA_DIR", "EZLEARN_FAKE_LLM", "EZLEARN_ALLOW_REMOTE", "NODE_OPTIONS" })
+                psi.EnvironmentVariables.Remove(k);
 
             Process proc;
             try { proc = Process.Start(psi); }
-            catch (Exception e)
-            {
-                splash.Close();
-                MessageBox.Show("启动失败：" + e.Message, "Ezlearn", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return 1;
-            }
+            catch (Exception e) { Fail(splash, "启动失败：" + e.Message, MessageBoxIcon.Error); return 1; }
 
             var sw = Stopwatch.StartNew();
             while (sw.Elapsed.TotalSeconds < 60)
             {
                 Application.DoEvents();
-                if (Common.ServerAlive()) break;
+                if (Common.ServerAlive()) return 0;
                 if (proc.HasExited)
                 {
-                    splash.Close();
-                    MessageBox.Show("Ezlearn 后台服务没能启动。\n\n" + Tail(log, 6) + "\n\n运行日志：" + log, "Ezlearn 无法启动", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Fail(splash, "Ezlearn 后台服务没能启动。\n\n" + Tail(log, 6) + "\n\n运行日志：" + log, MessageBoxIcon.Error);
                     return 1;
                 }
-                splash.SetProgress((int)Math.Min(95, sw.Elapsed.TotalSeconds * 12));
+                if (splash != null) splash.SetProgress((int)Math.Min(90, sw.Elapsed.TotalSeconds * 12));
                 Thread.Sleep(150);
             }
-            if (!Common.ServerAlive())
+            Fail(splash, "Ezlearn 启动超时。请稍后再试，或重新启动电脑。\n\n运行日志：" + log, MessageBoxIcon.Warning);
+            return 1;
+        }
+
+        /// <summary>窗口关掉后请服务退出；有任务在运行时服务会拒绝，等任务做完、没有窗口心跳后再自己退出。</summary>
+        static void RequestShutdownIfIdle()
+        {
+            try
             {
-                splash.Close();
-                MessageBox.Show("Ezlearn 启动超时。请稍后再试，或重新启动电脑。\n\n运行日志：" + log, "Ezlearn", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return 1;
+                string token = File.ReadAllText(Common.ControlTokenFile).Trim();
+                var req = (HttpWebRequest)WebRequest.Create(Common.AppUrl + "control/shutdown");
+                req.Method = "POST";
+                req.Proxy = null;
+                req.Timeout = 3000;
+                req.Headers["X-Ezlearn-Control"] = token;
+                req.ContentLength = 0;
+                using (req.GetResponse()) { }
             }
-            splash.SetProgress(100, "正在打开窗口……");
-            Application.DoEvents();
-            OpenWindow();
-            Thread.Sleep(800);
-            splash.Close();
-            return 0;
+            catch { /* 有任务在跑（409）或服务已经退出：都不需要处理 */ }
         }
 
         static string Tail(string file, int lines)
@@ -150,13 +211,9 @@ namespace Ezlearn
             return null;
         }
 
-        /// <summary>
-        /// 用 Edge（或 Chrome）的"应用窗口"模式打开：没有地址栏和标签页，看起来就是一个独立软件。
-        /// 使用单独的浏览器配置目录（卸载时一并删除），不影响你平时用的浏览器。
-        /// </summary>
-        static void OpenWindow()
+        /// <summary>后备方案：用 Edge（或 Chrome）的"应用窗口"打开（独立配置目录，不影响你平时的浏览器）。</summary>
+        public static void OpenBrowserWindow()
         {
-            if (noWindow) return;
             string browser = AppPath("msedge.exe");
             if (browser == null)
             {
@@ -199,21 +256,21 @@ namespace Ezlearn
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi; // 高分屏下按比例放大，字不发虚
             Text = "Ezlearn";
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MinimizeBox = false;
+            FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(420, 150);
+            ClientSize = new Size(420, 140);
             BackColor = Color.FromArgb(251, 250, 247);
             Font = new Font("Microsoft YaHei UI", 10F);
+            ShowInTaskbar = true;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            var title = new Label { Text = "Ezlearn 通用学习软件", Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold), ForeColor = Color.FromArgb(34, 33, 31), AutoSize = true, Location = new Point(24, 20) };
+            var title = new Label { Text = "Ezlearn 通用学习软件", Font = new Font("Microsoft YaHei UI", 14F, FontStyle.Bold), ForeColor = Color.FromArgb(34, 33, 31), AutoSize = true, Location = new Point(24, 22) };
             status = new Label { Text = "正在启动，请稍候……", ForeColor = Color.FromArgb(109, 106, 99), AutoSize = true, Location = new Point(26, 62) };
-            bar = new ProgressBar { Location = new Point(26, 96), Size = new Size(368, 16), Minimum = 0, Maximum = 100, Style = ProgressBarStyle.Continuous };
+            bar = new ProgressBar { Location = new Point(26, 96), Size = new Size(368, 14), Minimum = 0, Maximum = 100, Style = ProgressBarStyle.Continuous };
             Controls.Add(title);
             Controls.Add(status);
             Controls.Add(bar);
+            Paint += (o, e) => { using (var pen = new Pen(Color.FromArgb(227, 223, 214))) e.Graphics.DrawRectangle(pen, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1); };
         }
 
         public void SetProgress(int value, string text = null)

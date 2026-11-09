@@ -35,6 +35,9 @@ namespace Ezlearn
 
         public static string BrowserProfileDir { get { return Path.Combine(LocalDir, "browser"); } }
         public static string LogDir { get { return Path.Combine(LocalDir, "logs"); } }
+        public static string WebViewDataDir { get { return Path.Combine(LocalDir, "webview2"); } }
+        /// <summary>启动器与后台服务之间的控制口令（让关窗时能请服务退出）；只有当前用户能读。</summary>
+        public static string ControlTokenFile { get { return Path.Combine(LocalDir, "control.token"); } }
 
         public static string DefaultInstallDir
         {
