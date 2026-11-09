@@ -229,7 +229,7 @@ api.post('/courses/:cid/materials', upload.array('files'), wrap(async (req, res)
     const filename = displayName(f.originalname);
     try {
       const parsed = await parseFile(filename, f.buffer);
-      const role = meta[i]?.role || guessRole(filename);
+      const role = meta[i]?.role || guessRole(filename, parsed.pages.slice(0, 2).map((pg) => pg.text).join('\n'));
       const mid = newId('m-');
       const m = {
         id: mid, filename, role, kind: parsed.kind, week: meta[i]?.week || '', date: meta[i]?.date || '',

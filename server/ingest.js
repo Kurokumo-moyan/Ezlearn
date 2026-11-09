@@ -7,20 +7,46 @@ import { detectText, decodeAs, ENCODINGS } from './encoding.js';
 
 export const ALLOWED_EXT = new Set(['.pdf', '.txt', '.md', '.vtt', '.srt', '.csv', '.sql']);
 
-export function guessRole(filename) {
+// 文件名里的"答案"标记；"no sol / without answers" 之类的反义写法不算
+const SOL = /(sol(ution)?s?\b|sol\b|[-_ (]sol|ans(wer)?s?\b|[-_ (]ans|reference[-_ ]?answers|答案|解答|参考答案)/;
+const NO_SOL = /(no|without|w\/o|未含|不含)[\s_-]*(sol|ans|答案)/;
+
+/**
+ * 根据文件名（必要时再看前两页文字）猜资料的角色。猜错了用户可以在资料表里改。
+ * @param {string} filename
+ * @param {string} [headText] 资料开头的文字，文件名看不出来时用
+ */
+export function guessRole(filename, headText = '') {
   const n = filename.toLowerCase();
   const ext = path.extname(n);
+  const base = path.basename(n, ext);
+  const sol = SOL.test(base) && !NO_SOL.test(base);
   if (ext === '.sql' || ext === '.csv') return 'dataset';
-  if (/transcript|转录|录音|lecture[-_ ]?recording/.test(n) || ext === '.vtt' || ext === '.srt') return 'transcript';
-  if (/assign|作业|project|项目/.test(n)) return 'assignment';
-  if (/(exam|final|midterm|quiz|真题|期末|期中)/.test(n)) return /sol|ans|答案|解答/.test(n) ? 'past_exam_solution' : 'past_exam';
-  if (/(tut|tutorial|习题课)/.test(n)) return /sol|ans|答案/.test(n) ? 'tutorial_solution' : 'tutorial';
-  if (/\blab\b|lab\d|实验/.test(n)) return /sol|ans|答案/.test(n) ? 'lab_solution' : 'lab';
-  if (/outline|syllabus|大纲/.test(n)) return 'course_outline';
-  if (/annot|批注/.test(n)) return 'annotated_slides';
-  if (/slide|lec|讲义|课件/.test(n)) return 'slides';
-  if (/textbook|book|教材|chapter/.test(n)) return 'textbook';
-  if (/note|笔记/.test(n)) return 'lecture_notes';
+  if (/transcript|转录|录音|lecture[-_ ]?recording|caption/.test(n) || ext === '.vtt' || ext === '.srt') return 'transcript';
+  if (/outline|syllabus|大纲|课程介绍/.test(base) || /^co[-_]/.test(base)) return 'course_outline';
+  if (/assign|作业|project|项目/.test(base) || /(^|[-_ ])ass[-_ ]?\d/.test(base) || /^a\d[-_ ]/.test(base)) return 'assignment';
+  // 往年考试：exam / final / midterm / quiz，或 UNSW 这类学期代号（24T2、2023S1）
+  if (/(exam|final|midterm|mid-term|quiz|past[-_ ]?paper|真题|期末|期中)/.test(base) || /(^|[^a-z0-9])(\d{2}|20\d{2})\s*[ts]\d([^0-9]|$)/.test(base)) {
+    return sol ? 'past_exam_solution' : 'past_exam';
+  }
+  if (/(tut|tutorial|习题|exercise|additional[-_ ]?ex|practice|problem[-_ ]?set|workshop|练习)/.test(base)) return sol ? 'tutorial_solution' : 'tutorial';
+  if (/\blab\b|lab\d|lab[-_ ]|实验/.test(base)) return sol ? 'lab_solution' : 'lab';
+  if (/annot|批注/.test(base)) return 'annotated_slides';
+  // 课件：slides / lecture / 讲义，或 L1、L10、W3、week 3 这类编号
+  if (/slide|lec|讲义|课件/.test(base) || /^(l|w|wk|week)[-_ ]?\d{1,2}([^0-9]|$)/.test(base)) return 'slides';
+  if (/textbook|book|教材|chapter/.test(base)) return 'textbook';
+  if (/note|笔记/.test(base)) return 'lecture_notes';
+  return guessRoleFromText(headText, sol);
+}
+
+function guessRoleFromText(text, sol) {
+  const t = String(text || '').slice(0, 4000).toLowerCase();
+  if (!t.trim()) return 'other';
+  if (/course outline|course overview|course handbook|课程大纲/.test(t)) return 'course_outline';
+  if (/(final|mid-?term)\s+exam|examination|time allowed|reading time|total (number of )?marks|期末考试/.test(t)) return sol ? 'past_exam_solution' : 'past_exam';
+  if (/assignment|due date|submission deadline|作业/.test(t)) return 'assignment';
+  if (/tutorial|exercise|problem set|习题/.test(t)) return sol ? 'tutorial_solution' : 'tutorial';
+  if (/lecture|week\s*\d|learning outcomes|第\s*\d+\s*讲/.test(t)) return 'slides';
   return 'other';
 }
 
