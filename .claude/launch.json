@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ezlearn",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "server/index.js"
+      ],
+      "port": 5855
+    }
+  ]
+}

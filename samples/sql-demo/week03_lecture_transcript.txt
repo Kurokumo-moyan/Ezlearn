@@ -1,0 +1,13 @@
+Okay everyone, let's get started with week three. Today is joins and grouping, which is honestly the core of this course.
+
+So first, inner join. Think of it as matching rows. For every employee, we look for the department with the same dept_id. If there's no match, the employee simply disappears from the result.
+
+Now left join. Left join keeps every row from the left table. If nothing matches, you get NULLs on the right. A very common exam question is: how many rows does this join return? So practise counting rows.
+
+GROUP BY and HAVING are really important, they come up in the final every year. Make sure you know the difference between WHERE and HAVING.
+
+Oh, and one correction to slide 8. I swapped the two lines there. WHERE filters rows before grouping, HAVING filters groups after aggregation. Sorry about that, I'll fix the slides.
+
+The proof on slide 12 that join is associative is not examinable, but you need to know how to use the result, for example that you can join three tables in any order.
+
+For the final, it is closed book and you write the queries by hand, so practise writing SQL without the autocomplete.

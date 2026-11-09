@@ -1,0 +1,12 @@
+DEMO-SQL Introduction to Databases (FICTIONAL SAMPLE COURSE - for software demonstration only)
+
+Assessment
+- Final exam: 60%. 2 hours, closed book. You will write SQL queries by hand and reason about query results. Hurdle: you must get at least 40% of the final exam marks to pass the course.
+- Labs: 20% (weekly, weeks 2-9).
+- Assignment 1: 20%, due Week 7.
+
+Weekly topics
+Week 1: Relational model
+Week 2: Basic SELECT, WHERE
+Week 3: Joins, grouping and aggregation
+Week 4: Subqueries and NULL

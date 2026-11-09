@@ -1,0 +1,10 @@
+DEMO-SQL Final Examination 2025 (FICTIONAL SAMPLE)
+Time allowed: 2 hours. Total marks: 40.
+Use the schema: employees(emp_id, name, dept_id, salary, manager_id), departments(dept_id, name).
+
+Question 1 (10 marks)
+(a) [6 marks] List each department name together with the number of employees in that department. Departments with no employees must appear with a count of 0. Order by department name.
+(b) [4 marks] Find the names of departments whose average employee salary is greater than 7000.
+
+Question 2 (4 marks)
+How many rows does the query SELECT * FROM employees e LEFT JOIN departments d ON e.dept_id = d.dept_id return on the sample data? Explain.

@@ -1,0 +1,3 @@
+DEMO-SQL Assignment 1 (current term, due Week 7)
+Write a single SQL query that lists the names of all employees who earn a higher salary than their direct manager, together with the manager's name and both salaries.
+Submit your query as a .sql file.

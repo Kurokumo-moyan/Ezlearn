@@ -1,0 +1,34 @@
+--- slide 1 ---
+Week 3: Joins, Grouping and Aggregation
+DEMO-SQL (fictional sample course)
+--- slide 2 ---
+Why joins?
+Data about one thing is split across tables: employees(emp_id, name, dept_id, salary, manager_id) and departments(dept_id, name).
+To answer "which department does Alice work in" we must combine rows from both tables.
+--- slide 3 ---
+INNER JOIN
+SELECT e.name, d.name FROM employees e JOIN departments d ON e.dept_id = d.dept_id;
+Only rows that have a match in both tables appear in the result.
+--- slide 4 ---
+LEFT (OUTER) JOIN
+Keeps every row of the left table. If there is no matching row on the right, the right-hand columns are filled with NULL.
+--- slide 5 ---
+Join in relational algebra
+R ⋈θ S = σθ (R × S)
+A theta-join is a selection applied to the Cartesian product.
+--- slide 6 ---
+Logical query processing order
+FROM → JOIN → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT
+The order in which you write the clauses is not the order in which they are evaluated.
+--- slide 7 ---
+GROUP BY and aggregates
+COUNT, SUM, AVG, MIN, MAX compute one value per group.
+COUNT(*) counts rows; COUNT(column) counts non-NULL values of that column.
+--- slide 8 ---
+HAVING
+HAVING filters rows before grouping.
+WHERE filters groups after aggregation.
+--- slide 12 ---
+Proof: join is associative
+(R ⋈ S) ⋈ T = R ⋈ (S ⋈ T)
+Proof sketch using the definition of the Cartesian product and selection...
