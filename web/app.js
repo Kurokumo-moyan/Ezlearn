@@ -206,18 +206,18 @@ async function settingsPage() {
     const t = quiet ? null : localTask(`获取 ${p.label} 的模型列表`);
     try {
       const r = await api.post('/settings/models', { provider: p.id, ...(key ? { api_key: key } : {}), ...(p.needs_base_url && urlIn.value.trim() ? { base_url: urlIn.value.trim() } : {}) });
-      if (my !== fetchSeq) return;
+      if (my !== fetchSeq) { t?.cancel(); return; } // 已经有更新的请求：这一条直接收起，不留在进度窗口里
       const preferred = modelSel.value && r.models.includes(modelSel.value) ? modelSel.value : r.models.includes(r.default_model) ? r.default_model : r.models[0];
       setModels(r.models, preferred);
       modelMsg.textContent = r.models.length ? `密钥可用，找到 ${r.models.length} 个模型。请选择一个，然后点"保存并启用"。` : '密钥可用，但对方没有返回模型列表。请手动输入模型名。';
       modelMsg.className = 'small ok';
       t?.done(`找到 ${r.models.length} 个模型`);
     } catch (e) {
-      if (my !== fetchSeq) return;
+      if (my !== fetchSeq) { t?.cancel(); return; }
       modelMsg.textContent = e.message;
       modelMsg.className = 'small err';
       t?.fail(e.message);
-    } finally { fetchBtn.disabled = false; }
+    } finally { if (my === fetchSeq) fetchBtn.disabled = false; }
   }
   fetchBtn.addEventListener('click', () => fetchModels(false));
   let keyTimer;

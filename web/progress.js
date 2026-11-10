@@ -34,17 +34,26 @@ export function onJobFinished(fn) { listeners.add(fn); return () => listeners.de
 /** 立即刷新（刚启动一个任务后调用）。 */
 export function refreshJobs() { clearTimeout(timer); poll(); }
 
-/** 本地操作：返回 { done(msg), fail(msg) }，显示不确定进度条。 */
-export function localTask(label) {
+/**
+ * 本地操作：返回 { done(msg), fail(msg), cancel() }，显示不确定进度条。
+ * 只结束一次；万一调用方忘了结束，2 分钟后自动标为超时，进度窗口不会一直挂着。
+ */
+export function localTask(label, { timeoutMs = 2 * 60 * 1000 } = {}) {
   const id = `l${++seq}`;
+  let ended = false;
   locals.set(id, { label, state: 'running', msg: '', at: Date.now() });
   draw();
-  const end = (state, msg) => {
+  const end = (state, msg, keepMs) => {
+    if (ended) return;
+    ended = true;
+    clearTimeout(guard);
+    if (keepMs === 0) { locals.delete(id); draw(); return; }
     locals.set(id, { label, state, msg: msg || '', at: Date.now() });
     draw();
-    setTimeout(() => { locals.delete(id); draw(); }, state === 'error' ? 8000 : 2500);
+    setTimeout(() => { locals.delete(id); draw(); }, keepMs ?? (state === 'error' ? 8000 : 2500));
   };
-  return { done: (m) => end('done', m), fail: (m) => end('error', m) };
+  const guard = setTimeout(() => end('error', '超时：没有收到结果，请再试一次'), timeoutMs);
+  return { done: (m) => end('done', m), fail: (m) => end('error', m), cancel: () => end('done', '', 0) };
 }
 
 async function poll() {
