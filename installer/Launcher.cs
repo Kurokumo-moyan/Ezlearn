@@ -31,6 +31,8 @@ namespace Ezlearn
             bool noWindow = Common.Arg(args, "NoWindow") != null;
             string selfTest = Common.Arg(args, "SelfTest");
 
+            Common.InitDataDirs(InstallDir); // 数据跟着安装目录（data\）还是在 %APPDATA%
+
             bool created;
             using (var mutex = new Mutex(true, @"Local\EzlearnLauncher", out created))
             {
@@ -123,6 +125,7 @@ namespace Ezlearn
             }
 
             Directory.CreateDirectory(Common.LogDir);
+            Directory.CreateDirectory(Common.DataDir);
             string log = Path.Combine(Common.LogDir, "server.log");
             string appDir = Path.Combine(InstallDir, "app");
 
@@ -144,6 +147,7 @@ namespace Ezlearn
             psi.EnvironmentVariables["EZLEARN_CONTROL_TOKEN"] = control;
             foreach (var k in new[] { "EZLEARN_HOST", "EZLEARN_PORT", "EZLEARN_DATA_DIR", "EZLEARN_FAKE_LLM", "EZLEARN_ALLOW_REMOTE", "NODE_OPTIONS" })
                 psi.EnvironmentVariables.Remove(k);
+            psi.EnvironmentVariables["EZLEARN_DATA_DIR"] = Common.DataDir;
 
             Process proc;
             try { proc = Process.Start(psi); }

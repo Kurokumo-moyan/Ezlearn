@@ -25,6 +25,7 @@ namespace Ezlearn
             bool keepData = Common.Arg(args, "KeepData") != null;
             string render = Common.Arg(args, "Render");
 
+            Common.InitDataDirs(from ?? Path.GetDirectoryName(self));
             if (render != null)
             {
                 using (var f = new UninstallForm(Path.GetDirectoryName(self), false)) f.RenderTo(render);
@@ -110,22 +111,34 @@ namespace Ezlearn
             Thread.Sleep(800);
 
             report("正在删除快捷方式……");
-            try { if (File.Exists(Common.DesktopShortcut)) File.Delete(Common.DesktopShortcut); } catch { left.Add(Common.DesktopShortcut); }
-            try { if (Directory.Exists(Common.StartMenuDir)) Directory.Delete(Common.StartMenuDir, true); } catch { left.Add(Common.StartMenuDir); }
+            // 只删指向这份安装的快捷方式（电脑上可能还有另一份 Ezlearn）
+            try { if (Common.ShortcutPointsInto(Common.DesktopShortcut, installDir)) File.Delete(Common.DesktopShortcut); } catch { left.Add(Common.DesktopShortcut); }
+            try
+            {
+                var appLnk = Path.Combine(Common.StartMenuDir, "Ezlearn.lnk");
+                if (Directory.Exists(Common.StartMenuDir) && (!File.Exists(appLnk) || Common.ShortcutPointsInto(appLnk, installDir))) Directory.Delete(Common.StartMenuDir, true);
+            }
+            catch { left.Add(Common.StartMenuDir); }
 
             report("正在从系统应用列表中移除……");
-            Common.Unregister();
+            Common.Unregister(installDir);
 
             report("正在删除程序文件（含内置 Node.js）……");
-            if (Common.DeleteTree(installDir) > 0) left.Add(installDir);
+            if (Common.DataInside(installDir) && !deleteData)
+            {
+                // 课程数据放在安装目录里、用户又要保留：只删程序文件和缓存，留下 data\
+                if (Common.DeleteTreeExcept(installDir, Common.DataDir) > 0) left.Add(installDir);
+                if (Directory.Exists(Common.LocalDir) && Common.DeleteTree(Common.LocalDir) > 0) left.Add(Common.LocalDir);
+            }
+            else if (Common.DeleteTree(installDir) > 0) left.Add(installDir);
 
             report("正在删除浏览器窗口配置和日志……");
-            if (Common.IsOurDataDir(Common.LocalDir) && Common.DeleteTree(Common.LocalDir) > 0) left.Add(Common.LocalDir);
+            if (!Common.DataInside(installDir) && Common.IsOurDataDir(Common.LocalDir) && Common.DeleteTree(Common.LocalDir) > 0) left.Add(Common.LocalDir);
 
             if (deleteData)
             {
                 report("正在删除课程数据……");
-                if (Common.IsOurDataDir(Common.DataDir) && Common.DeleteTree(Common.DataDir) > 0) left.Add(Common.DataDir);
+                if (!Common.DataInside(installDir) && Common.IsOurDataDir(Common.DataDir) && Common.DeleteTree(Common.DataDir) > 0) left.Add(Common.DataDir);
             }
             report(left.Count == 0 ? "卸载完成" : "卸载完成，但有几项没能删除");
             return left;

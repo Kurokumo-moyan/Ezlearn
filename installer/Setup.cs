@@ -2,7 +2,8 @@
 // - 先检查电脑上有没有可用的 Node.js（22 或更高）：有就直接用，没有就把内置的装到软件目录的 runtime\ 里；
 // - 只装到当前用户目录，不需要管理员权限，不改系统设置；
 // - 创建开始菜单 / 桌面快捷方式，并登记到"设置 → 应用"，可以从那里卸载。
-// 命令行（测试 / 批量部署用）：/S 静默  /D=目录  /NoShortcuts  /NoRegister  /NoLaunch  /BundledNode  /Render=预览图.png
+// 命令行（测试 / 批量部署用）：/S 静默  /D=目录  /Data=数据目录  /NoShortcuts  /NoRegister  /NoLaunch  /BundledNode  /Render=预览图.png
+// 数据目录默认是安装目录里的 data\（不占系统盘）；升级时沿用原来的设置。
 using System;
 using System.Diagnostics;
 using System.Drawing;
@@ -31,6 +32,7 @@ namespace Ezlearn
                 Register = Common.Arg(args, "NoRegister") == null,
                 Launch = Common.Arg(args, "NoLaunch") == null,
                 ForceBundled = Common.Arg(args, "BundledNode") != null,
+                DataDir = Common.Arg(args, "Data"),
             };
             string render = Common.Arg(args, "Render");
             if (render != null)
@@ -66,6 +68,7 @@ namespace Ezlearn
         public bool ForceBundled;
         public string SystemNode;          // 检测到的系统 Node.js（为空表示没有可用的）
         public string SystemNodeVersion;
+        public string DataDir;             // 为空：新安装用 "data"，升级沿用原来的
     }
 
     internal static class Installer
@@ -92,7 +95,13 @@ namespace Ezlearn
             bool useSystem = !o.ForceBundled && o.SystemNode != null;
 
             report(2, "正在检查旧版本……");
+            // 数据目录：命令行指定的 > 旧安装记录的 > 新安装默认放在软件旁边的 data\
+            var oldInfo = Common.ReadInstallInfo(dir);
+            string dataDir = !string.IsNullOrEmpty(o.DataDir) ? o.DataDir
+                : oldInfo != null ? (Common.JsonGet(oldInfo, "data_dir") ?? "")
+                : "data";
             // 升级：先停掉正在运行的旧版本（只停这个目录里的 Ezlearn）
+            Common.InitDataDirs(dir);
             Common.KillByCommandLine("Ezlearn.exe", dir);
             Common.KillByCommandLine("node.exe", Path.Combine(dir, "app", "server", "index.js"));
             Common.KillByCommandLine("msedgewebview2.exe", Common.WebViewDataDir);
@@ -104,7 +113,7 @@ namespace Ezlearn
                     throw new InvalidOperationException("目标文件夹已存在且不是 Ezlearn 的安装目录，为避免覆盖你的文件，请换一个位置：\n" + dir);
                 if (ours)
                 {
-                    foreach (var sub in new[] { "app", "runtime" })
+                    foreach (var sub in new[] { "app", "runtime" }) // 只换程序文件，data\ 不动
                     {
                         var p = Path.Combine(dir, sub);
                         if (Directory.Exists(p) && Common.DeleteTree(p) > 0) throw new IOException("旧版本文件被占用，删不掉：" + p + "\n请关闭 Ezlearn 窗口后重试。");
@@ -139,7 +148,7 @@ namespace Ezlearn
             }
 
             string nodePath = useSystem ? o.SystemNode : "runtime\\node.exe";
-            Common.WriteInstallInfo(dir, SetupProgram.Version, nodePath, useSystem ? "system" : "bundled");
+            Common.WriteInstallInfo(dir, SetupProgram.Version, nodePath, useSystem ? "system" : "bundled", dataDir);
 
             if (o.Shortcuts)
             {
@@ -198,7 +207,7 @@ namespace Ezlearn
             nodeLabel = new Label { Text = "正在检查电脑上的 Node.js……", AutoSize = false, Location = new Point(26, 160), Size = new Size(528, 44), ForeColor = Color.FromArgb(47, 93, 138) };
             desktopBox = new CheckBox { Text = "在桌面创建快捷方式", Checked = o.Shortcuts, AutoSize = true, Location = new Point(26, 212) };
             launchBox = new CheckBox { Text = "安装完成后打开 Ezlearn", Checked = o.Launch, AutoSize = true, Location = new Point(26, 240) };
-            var note = new Label { Text = "只安装给当前用户，不需要管理员权限。课程数据保存在 %APPDATA%\\Ezlearn。", ForeColor = Color.FromArgb(109, 106, 99), AutoSize = true, Location = new Point(26, 272) };
+            var note = new Label { Text = "只安装给当前用户，不需要管理员权限。课程数据保存在安装位置里的 data 文件夹。", ForeColor = Color.FromArgb(109, 106, 99), AutoSize = true, Location = new Point(26, 272) };
             bar = new ProgressBar { Location = new Point(26, 304), Size = new Size(528, 18), Minimum = 0, Maximum = 100 };
             status = new Label { Text = "", AutoSize = true, Location = new Point(26, 328), ForeColor = Color.FromArgb(109, 106, 99) };
             installBtn = new Button { Text = "安装", Location = new Point(368, 352), Size = new Size(90, 32) };

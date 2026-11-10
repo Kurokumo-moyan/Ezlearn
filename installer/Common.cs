@@ -21,16 +21,39 @@ namespace Ezlearn
         public const string MarkerFile = "ezlearn-install.json";
         public const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Ezlearn";
 
-        /// <summary>课程、学习书、书签、设置（服务端数据目录，与 server/config.js 一致）。</summary>
+        static string dataDirOverride;
+
+        /// <summary>
+        /// 课程、学习书、书签、设置（交给服务端的数据目录）。
+        /// 安装信息里写了 data_dir 时用它（相对路径相对于安装目录，默认 "data"，即和软件放在一起）；
+        /// 没写时（0.5.0 及以前的安装）沿用 %APPDATA%\Ezlearn。
+        /// </summary>
         public static string DataDir
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppName); }
+            get { return dataDirOverride ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppName); }
         }
 
-        /// <summary>本机缓存：内置浏览器窗口的配置、运行日志。</summary>
+        /// <summary>本机缓存：窗口配置、WebView2 缓存、运行日志。数据跟着安装目录时放在数据目录的 local\ 里。</summary>
         public static string LocalDir
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName); }
+            get { return dataDirOverride != null ? Path.Combine(dataDirOverride, "local") : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName); }
+        }
+
+        /// <summary>根据安装目录里的安装信息决定数据放在哪里。启动器、卸载程序启动时先调用。</summary>
+        public static void InitDataDirs(string installDir)
+        {
+            dataDirOverride = null;
+            var info = ReadInstallInfo(installDir);
+            var d = info != null ? JsonGet(info, "data_dir") : null;
+            if (string.IsNullOrEmpty(d)) return;
+            dataDirOverride = Path.GetFullPath(Path.IsPathRooted(d) ? d : Path.Combine(installDir, d)).TrimEnd('\\');
+        }
+
+        /// <summary>数据目录是否在安装目录里面（卸载时保留数据就不能整个删安装目录）。</summary>
+        public static bool DataInside(string installDir)
+        {
+            var root = Path.GetFullPath(installDir).TrimEnd('\\') + "\\";
+            return dataDirOverride != null && (dataDirOverride + "\\").StartsWith(root, StringComparison.OrdinalIgnoreCase);
         }
 
         public static string BrowserProfileDir { get { return Path.Combine(LocalDir, "browser"); } }
@@ -169,10 +192,10 @@ namespace Ezlearn
             return Regex.Unescape(m.Groups[1].Value);
         }
 
-        public static void WriteInstallInfo(string dir, string version, string nodePath, string nodeMode)
+        public static void WriteInstallInfo(string dir, string version, string nodePath, string nodeMode, string dataDir)
         {
             var json = "{\n  \"app\": \"" + AppId + "\",\n  \"version\": \"" + JsonEscape(version) + "\",\n  \"node\": \"" + JsonEscape(nodePath) +
-                       "\",\n  \"node_mode\": \"" + nodeMode + "\",\n  \"installed_at\": \"" + DateTime.UtcNow.ToString("o") + "\"\n}\n";
+                       "\",\n  \"node_mode\": \"" + nodeMode + "\",\n" + (string.IsNullOrEmpty(dataDir) ? "" : "  \"data_dir\": \"" + JsonEscape(dataDir) + "\",\n") + "  \"installed_at\": \"" + DateTime.UtcNow.ToString("o") + "\"\n}\n";
             File.WriteAllText(Path.Combine(dir, MarkerFile), json, new UTF8Encoding(false));
         }
 
@@ -227,6 +250,20 @@ namespace Ezlearn
         {
             var full = Norm(dir);
             return full == Norm(DataDir) || full == Norm(LocalDir);
+        }
+
+        /// <summary>删除目录里除 keep 子目录以外的全部内容（卸载时保留放在安装目录里的课程数据）。</summary>
+        public static int DeleteTreeExcept(string dir, string keep)
+        {
+            int failed = 0;
+            var keepFull = Path.GetFullPath(keep).TrimEnd('\\');
+            foreach (var f in Directory.GetFiles(dir)) { try { File.SetAttributes(f, FileAttributes.Normal); File.Delete(f); } catch { failed++; } }
+            foreach (var d in Directory.GetDirectories(dir))
+            {
+                if (string.Equals(Path.GetFullPath(d).TrimEnd('\\'), keepFull, StringComparison.OrdinalIgnoreCase)) continue;
+                failed += DeleteTree(d);
+            }
+            return failed;
         }
 
         /// <summary>删除目录；单个文件删不掉（被占用）时重试几次，最后返回删不掉的数量。</summary>
@@ -296,9 +333,46 @@ namespace Ezlearn
             }
         }
 
-        public static void Unregister()
+        /// <summary>只有系统里登记的正是这个安装目录时才删除登记（避免卸载一份副本时把另一份的登记删掉）。</summary>
+        public static void Unregister(string installDir)
         {
-            try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
+            try
+            {
+                using (var k = Registry.CurrentUser.OpenSubKey(UninstallKey))
+                {
+                    var loc = k != null ? k.GetValue("InstallLocation") as string : null;
+                    if (loc == null || Norm(loc) != Norm(installDir)) return;
+                }
+                Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false);
+            }
+            catch { }
+        }
+
+        /// <summary>快捷方式指向的程序路径；读不出来返回 null。</summary>
+        public static string ShortcutTarget(string lnkPath)
+        {
+            if (!File.Exists(lnkPath)) return null;
+            try
+            {
+                var shellType = Type.GetTypeFromProgID("WScript.Shell");
+                object shell = Activator.CreateInstance(shellType);
+                try
+                {
+                    object lnk = shellType.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, shell, new object[] { lnkPath });
+                    var t = lnk.GetType().InvokeMember("TargetPath", System.Reflection.BindingFlags.GetProperty, null, lnk, null) as string;
+                    System.Runtime.InteropServices.Marshal.FinalReleaseComObject(lnk);
+                    return t;
+                }
+                finally { System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell); }
+            }
+            catch { return null; }
+        }
+
+        /// <summary>快捷方式是否指向这个安装目录里的程序。</summary>
+        public static bool ShortcutPointsInto(string lnkPath, string installDir)
+        {
+            var t = ShortcutTarget(lnkPath);
+            return t != null && (Norm(t) + "\\").StartsWith(Norm(installDir) + "\\", StringComparison.Ordinal);
         }
 
         public static long DirSizeKb(string dir)

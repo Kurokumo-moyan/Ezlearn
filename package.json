@@ -1,6 +1,6 @@
 {
   "name": "ezlearn",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "通用学习软件：把一门课的教学资料变成可追溯、可交互的学习书（本地单用户 MVP）",
   "type": "module",
