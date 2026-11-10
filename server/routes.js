@@ -14,6 +14,7 @@ import { PRESETS, checkBaseURL } from './providers.js';
 import { loadSettings, saveSettings, getProvider, keyTail, budgetDefault } from './settings.js';
 import { ENCODINGS, decodeAs } from './encoding.js';
 import { touch, requestShutdown, canShutdown } from './lifecycle.js';
+import { checkForUpdate, startDownload, downloadStatus, installDownloaded, updateRepo, installDir, CURRENT_VERSION } from './updater.js';
 import { seedDemo } from '../scripts/seed-demo.js';
 import {
   loadCtx, saveCourse, startJob, jobOf, runEvidence, runProfile, runExam, runPlan, runChapter,
@@ -70,6 +71,10 @@ function settingsView() {
     budget_usd: budgetDefault(),
     data_dir: config.dataDir,
     error: p.error || null,
+    version: CURRENT_VERSION,
+    update_check: s.update_check !== false,
+    update_repo: updateRepo(),
+    update_can_install: Boolean(installDir()),
     providers: Object.entries(PRESETS).map(([id, x]) => ({
       id, label: x.label, default_model: x.model, key_site: KEY_SITES[id] || '', needs_base_url: id === 'custom',
       has_key: Boolean(keyTail(id)), key_tail: keyTail(id), saved_model: s.models[id] || '',
@@ -93,6 +98,8 @@ api.put('/settings', wrap(async (req, res) => {
     vision_model: ModelStr.or(z.literal('')).optional(),
     base_url: z.string().trim().max(500).optional(),
     budget_usd: z.number().min(1).max(10000).optional(),
+    update_check: z.boolean().optional(),
+    update_skip: z.string().regex(/^(\d+\.\d+\.\d+)?$/).optional(),
   }).strict(), req.body);
   const s = structuredClone(loadSettings());
   const pid = b.provider || s.provider || getProvider().id;
@@ -108,6 +115,8 @@ api.put('/settings', wrap(async (req, res) => {
     } else delete s.base_url;
   }
   if (b.budget_usd !== undefined) s.budget_usd = b.budget_usd;
+  if (b.update_check !== undefined) s.update_check = b.update_check;
+  if (b.update_skip !== undefined) { if (b.update_skip) s.update_skip = b.update_skip; else delete s.update_skip; }
   saveSettings(s);
   res.json(settingsView());
 }));
@@ -120,6 +129,21 @@ api.post('/settings/models', wrap(async (req, res) => {
   } catch (e) {
     res.status(e.code === 'auth' ? 401 : 502).json({ error: e.message, code: e.code || null });
   }
+}));
+
+// ---------- 自动更新（GitHub Releases，签名校验见 updater.js） ----------
+api.get('/update/check', wrap(async (req, res) => {
+  try {
+    res.json(await checkForUpdate({ force: req.query.force === '1' }));
+  } catch (e) {
+    res.status(502).json({ error: e.message, code: e.code || null, current: CURRENT_VERSION });
+  }
+}));
+api.post('/update/download', wrap(async (_req, res) => res.json(startDownload())));
+api.get('/update/status', (_req, res) => res.json(downloadStatus()));
+api.post('/update/install', wrap(async (_req, res) => {
+  if (runningJobCount() > 0) return res.status(409).json({ error: '还有任务在运行，等它完成后再更新。', running: true });
+  res.json(await installDownloaded());
 }));
 
 // ---------- 示例课程 ----------

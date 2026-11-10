@@ -2,6 +2,7 @@
 // - 先检查电脑上有没有可用的 Node.js（22 或更高）：有就直接用，没有就把内置的装到软件目录的 runtime\ 里；
 // - 只装到当前用户目录，不需要管理员权限，不改系统设置；
 // - 创建开始菜单 / 桌面快捷方式，并登记到"设置 → 应用"，可以从那里卸载。
+// /Update：软件内“立即更新”用——不再询问，自动装到 /D 指定的原目录（沿用原来的桌面快捷方式和数据目录），装完重新打开。
 // 命令行（测试 / 批量部署用）：/S 静默  /D=目录  /Data=数据目录  /NoShortcuts  /NoRegister  /NoLaunch  /BundledNode  /Render=预览图.png
 // 数据目录默认是安装目录里的 data\（不占系统盘）；升级时沿用原来的设置。
 using System;
@@ -54,7 +55,7 @@ namespace Ezlearn
                     return 1;
                 }
             }
-            Application.Run(new SetupForm(opts));
+            Application.Run(new SetupForm(opts, Common.Arg(args, "Update") != null));
             return 0;
         }
     }
@@ -177,10 +178,12 @@ namespace Ezlearn
         readonly Label status;
         readonly Button installBtn, cancelBtn, browseBtn;
         bool done;
+        readonly bool update;
 
-        public SetupForm(SetupOptions o)
+        public SetupForm(SetupOptions o, bool updateMode = false)
         {
             opts = o;
+            update = updateMode;
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi; // 高分屏下按比例放大，字不发虚
             Text = "安装 Ezlearn " + SetupProgram.Version;
@@ -217,6 +220,18 @@ namespace Ezlearn
             AcceptButton = installBtn;
             CancelButton = cancelBtn;
             Controls.AddRange(new Control[] { title, sub, dirLabel, dirBox, browseBtn, nodeLabel, desktopBox, launchBox, note, bar, status, installBtn, cancelBtn });
+            if (update)
+            {
+                Text = "更新 Ezlearn 到 " + SetupProgram.Version;
+                sub.Text = "正在更新到新版本，课程数据和设置都会保留。完成后会自动重新打开。";
+                dirBox.Text = Installer.NormalizeDir(o.InstallDir);
+                dirBox.ReadOnly = true;
+                browseBtn.Enabled = false;
+                desktopBox.Checked = File.Exists(Common.DesktopShortcut);
+                desktopBox.Enabled = false;
+                launchBox.Checked = true;
+                launchBox.Enabled = false;
+            }
 
             Load += delegate
             {
@@ -237,6 +252,7 @@ namespace Ezlearn
             else
                 nodeLabel.Text = "电脑上没有可用的 Node.js（需要 " + Common.MinNodeMajor + " 或更高版本）。\n将把内置的 Node.js " + SetupProgram.BundledNodeVersion + " 安装到软件目录里，卸载时一起删除。";
             installBtn.Enabled = true;
+            if (update && !done) StartInstall();
         }
 
         void StartInstall()

@@ -1,9 +1,12 @@
 {
   "name": "ezlearn",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "description": "通用学习软件：把一门课的教学资料变成可追溯、可交互的学习书（本地单用户 MVP）",
   "type": "module",
+  "ezlearn": {
+    "updateRepo": ""
+  },
   "engines": {
     "node": ">=22"
   },
@@ -14,7 +17,8 @@
     "demo:seed": "node scripts/seed-demo.js",
     "audit": "npm audit --omit=dev",
     "build:installer": "node scripts/build-installer.mjs",
-    "fetch:webview2": "node scripts/fetch-webview2.mjs"
+    "fetch:webview2": "node scripts/fetch-webview2.mjs",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",

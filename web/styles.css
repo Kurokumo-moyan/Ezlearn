@@ -320,3 +320,9 @@ h1 .help-btn,h2 .help-btn,h3 .help-btn{position:relative;top:-2px}
 .unc-opt input[type=text]{flex:1;min-width:0}
 .unc-opt mark{padding:0 2px}
 .unc-opt .chip{flex:none;white-space:nowrap;align-self:center}
+
+/* 软件更新提示卡片：标题栏下方右侧 */
+.upd-card{position:fixed;top:calc(var(--tb-h) + 10px);right:16px;z-index:75;width:min(420px,calc(100vw - 32px));background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:10px 14px 12px;font-size:14px;line-height:1.6}
+.upd-card .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.upd-body{margin:8px 0}
+.upd-notes{white-space:pre-wrap;max-height:180px;overflow:auto;font-size:13px;background:var(--panel);border-radius:8px;padding:6px 10px}

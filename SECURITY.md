@@ -49,6 +49,17 @@ Ezlearn 是本机单用户软件。它处理两类不可信输入：**上传的�
 - 删除课程会删除其全部本地数据（不可恢复，界面会二次确认）。
 - 课程资料与生成内容会发送给**你选择的模型提供商**（默认 Anthropic；也可能是 OpenAI、DeepSeek、Google、阿里云、Moonshot、智谱、OpenRouter 或自定义接口）处理；除此之外没有任何遥测或外部请求。不同服务商的数据保留政策和所在法域不同，涉及隐私、未公开或受版权保护的资料时，请先阅读对方的数据政策，或用本机模型（`custom` + `http://127.0.0.1`）。首页会显示当前发送目标。
 
+## 自动更新
+
+| 威胁 | 防护 |
+|---|---|
+| GitHub 账号被盗 / Release 附件被替换 | 更新清单 `ezlearn-update.json` 必须带发布者 Ed25519 签名，公钥内置在软件里（`server/update-key.js`），私钥只在发布者电脑上（仓库之外）；签名不对直接拒绝 |
+| 下载被篡改 / 截断 | 清单里记录安装包大小和 SHA-256；边下载边计算，超出大小立即停止，不一致删除；运行前再算一次 |
+| 被引导到其他服务器 | 只用 https；只访问 `api.github.com`、`github.com`、`objects.githubusercontent.com`、`release-assets.githubusercontent.com`，重定向逐跳检查域名，最多 6 跳 |
+| 清单里塞恶意路径 / 参数 | 文件名必须匹配 `Ezlearn-Setup-x.y.z.exe` 且与版本号一致；安装包只保存在数据目录的 `local/updates/`；启动参数固定为 `/Update /D=<当前安装目录>` |
+| 隐私 | 检查更新只读取公开的 Release 信息；请求不带 Cookie、令牌或任何用户信息，User-Agent 为通用的 `Ezlearn-Updater`；可在设置里关闭自动检查 |
+| 版本回退 | 只提示比当前版本号更高的版本 |
+
 ## 供应链
 
 - 依赖版本精确锁定（`.npmrc` 中 `save-exact=true`），并选择发布至少两周的版本；`ignore-scripts=true` 禁止依赖安装脚本。

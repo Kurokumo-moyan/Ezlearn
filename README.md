@@ -34,7 +34,20 @@ npm run build:installer
 
 输出 `dist/Ezlearn-Setup-<版本>.exe` 和 `.sha256`。构建脚本会从 nuget.org 下载固定版本的 WebView2 SDK 并校验 Microsoft 签名，把当前运行的官方 `node.exe` 作为内置 Node.js 打进去，裁掉依赖里的调试符号与类型声明，并用打包后的文件真正启动一次做冒烟测试。
 
-安装程序命令行参数（测试 / 批量部署）：`/S` 静默，`/D=目录`，`/Data=数据目录`（相对路径相对于安装目录，默认 `data`），`/NoShortcuts`，`/NoRegister`，`/NoLaunch`，`/BundledNode`（强制使用内置 Node.js）。卸载程序：`/S`，`/KeepData`。
+安装程序命令行参数（测试 / 批量部署）：`/S` 静默，`/D=目录`，`/Data=数据目录`（相对路径相对于安装目录，默认 `data`），`/NoShortcuts`，`/NoRegister`，`/NoLaunch`，`/BundledNode`（强制使用内置 Node.js），`/Update`（软件内更新用：不询问，装到 `/D` 指定的原目录并重新打开）。卸载程序：`/S`，`/KeepData`。
+
+### 发布新版本与自动更新
+
+软件启动后会读取 `package.json` 里 `ezlearn.updateRepo`（格式 `owner/repo`，也可用环境变量 `EZLEARN_UPDATE_REPO`）对应 GitHub 仓库的**最新 Release**，有新版本时在标题栏下方提示：**立即更新 / 保留当前版本 / 跳过这个版本**。设置页可以关闭自动检查或手动“检查更新”。
+
+更新包必须经过签名，流程如下（第一次发布前先做第 1 步）：
+
+1. 生成签名密钥（只做一次）：`node scripts/release-keygen.mjs`。私钥写到仓库**之外**的 `../Ezlearn-release-key/`，公钥写进 `server/update-key.js`（要提交）。**私钥丢了，已安装的旧版本就再也收不到更新；私钥泄露，别人就能冒充你发布更新。** 请备份到安全的地方，不要提交或上传。
+2. 改 `package.json` 的 `version`，然后 `npm run build:installer`。
+3. `npm run release -- --notes "这次更新了什么"`：生成 `dist/release-<版本>/` 下的 `Ezlearn-Setup-<版本>.exe`、`ezlearn-update.json`（版本、文件名、大小、SHA-256、更新说明）和 `ezlearn-update.json.sig`（Ed25519 签名）。
+4. 在 GitHub 仓库新建 Release，tag 写 `v<版本>`，把这三个文件作为附件上传并发布（不要勾选 pre-release）。
+
+用户点“立即更新”后，软件下载安装包，核对签名和 SHA-256，再以 `/Update` 模式运行安装程序：自动装到原来的目录（数据和设置保留），装完重新打开。
 
 ## 模型提供商
 

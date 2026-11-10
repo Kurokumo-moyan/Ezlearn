@@ -4,6 +4,7 @@ import { renderBlocks, rich, anchor } from './render.js';
 import { mountProgress, onJobFinished, refreshJobs, localTask } from './progress.js';
 import { mountTitlebar, setTitleContext, syncHostBackground } from './titlebar.js';
 import { helpIcon } from './help.js';
+import { checkOnStart, updateSettingsCard } from './update.js';
 
 const $app = document.getElementById('app');
 let pollTimer = null;
@@ -61,6 +62,8 @@ async function route() {
 window.addEventListener('hashchange', route);
 if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', route, { once: true });
 else route();
+// 有新版本时提示（几秒后再查，不拖慢首屏）
+setTimeout(checkOnStart, 3000);
 
 function plainLayout(...kids) {
   const content = h('div', { id: 'content' }, kids);
@@ -265,6 +268,9 @@ async function settingsPage() {
     h('p', { class: 'small muted' }, '每门课最多花多少美元（按用量估算）。达到上限后会自动停止，不会无限扣钱。单门课也可以在它的管理页里单独提高。'),
     h('div', { class: 'row' }, h('span', { class: 'small' }, '新课程默认上限（美元）'), budgetIn,
       h('button', { class: 'btn', onclick: async () => { try { await api.put('/settings', { budget_usd: Number(budgetIn.value) }); toast('已保存'); } catch (e) { toast(e.message, true); } } }, '保存'))));
+
+  // --- 软件更新 ---
+  content.add(updateSettingsCard(s));
 
   // --- 数据与退出 ---
   content.add(h('div', { class: 'card' }, h('h3', null, '数据', helpIcon('data')),
