@@ -3,6 +3,7 @@ import { api, paths } from './api.js';
 import { renderBlocks, rich, anchor } from './render.js';
 import { mountProgress, onJobFinished, refreshJobs, localTask } from './progress.js';
 import { mountTitlebar, setTitleContext, syncHostBackground } from './titlebar.js';
+import { helpIcon } from './help.js';
 
 const $app = document.getElementById('app');
 let pollTimer = null;
@@ -82,7 +83,7 @@ function titlebarButtons() {
   });
   const en = h('button', { class: 'btn' }, store.get('ez-en-off', false) ? '显示英文术语' : '隐藏英文术语');
   en.addEventListener('click', () => { store.set('ez-en-off', !store.get('ez-en-off', false)); applyTheme(); en.textContent = store.get('ez-en-off', false) ? '显示英文术语' : '隐藏英文术语'; });
-  return [h('a', { class: 'btn', href: '#/' }, '历史课程'), t, en, h('a', { class: 'btn', href: '#/settings' }, '⚙ 设置')];
+  return [h('a', { class: 'btn', href: '#/' }, '历史课程'), t, en, h('a', { class: 'btn', href: '#/settings' }, '⚙ 设置'), helpIcon('faq')];
 }
 
 function llmNotices(status) {
@@ -99,7 +100,7 @@ async function home() {
   const [courses, status] = await Promise.all([api.get('/courses'), api.get('/status')]);
   const form = h('form', { class: 'card' });
   const f = (name, label, value = '', ph = '') => h('label', { class: 'row' }, h('span', { class: 'small' }, label), h('input', { type: 'text', name, value, placeholder: ph }));
-  form.add(h('h3', null, '新建课程'),
+  form.add(h('h3', null, '新建课程', helpIcon('newCourse')),
     h('div', { class: 'row' }, f('code', '课程代码', '', 'COMP9311'), f('title', '课程名称', '', 'Database Systems')),
     h('div', { class: 'row' }, f('teaching_language', '讲解语言', '中文'), f('exam_language', '考试语言', 'English')),
     h('p', { class: 'small muted' }, '讲解语言是学习书和进度提示使用的语言；考试语言用于标注术语原文。'),
@@ -118,10 +119,10 @@ async function home() {
 
   setTitleContext('');
   plainLayout(
-    h('p', { class: 'muted home-intro' }, '把一门课的教学资料变成按课程结构组织、零基础可读、每个结论可追溯、带交互演示的学习书。所有数据只保存在本机。'),
+    h('p', { class: 'muted home-intro' }, '把一门课的教学资料变成按课程结构组织、零基础可读、每个结论可追溯、带交互演示的学习书。所有数据只保存在本机。', helpIcon('about')),
     llmNotices(status),
     status.llm.mode === 'api' ? h('p', { class: 'small muted' }, `当前模型：${status.llm.provider_label} · ${status.llm.model}。生成内容时，所选资料会发送给该服务商处理。`, h('a', { href: '#/settings' }, '更换')) : null,
-    h('div', { class: 'card' }, h('div', { class: 'row' }, h('h3', null, '历史课程'), h('span', { class: 'spacer' }), hasDemo ? null : demoBtn),
+    h('div', { class: 'card' }, h('div', { class: 'row' }, h('h3', null, '历史课程', helpIcon('history')), h('span', { class: 'spacer' }), hasDemo ? null : demoBtn),
       courses.length
         ? h('div', { class: 'history' }, courses.map(historyRow))
         : h('p', { class: 'muted' }, '还没有课程。可以先点右上角"导入示例课程"看看效果，或在下面新建一门课。')),
@@ -165,7 +166,7 @@ async function settingsPage() {
   const modelMsg = h('div', { class: 'small muted' });
   const visionIn = h('input', { type: 'text', maxlength: 100 });
   const visionNote = h('span', { class: 'small muted' });
-  const visionRow = h('div', null, h('div', { class: 'row' }, h('span', { class: 'small' }, '图像识别模型'), visionIn), visionNote);
+  const visionRow = h('div', null, h('div', { class: 'row' }, h('span', { class: 'small' }, '图像识别模型', helpIcon('visionModel')), visionIn), visionNote);
   const fetchBtn = h('button', { class: 'btn' }, '获取可用模型');
   const cur = () => s.providers.find((p) => p.id === provSel.value);
 
@@ -243,7 +244,7 @@ async function settingsPage() {
     settingsPage();
   } }, '删除已保存的密钥');
 
-  content.add(h('div', { class: 'card' }, h('h3', null, 'AI 模型'),
+  content.add(h('div', { class: 'card' }, h('h3', null, 'AI 模型', helpIcon('apiKey')),
     status.llm.mode === 'api' ? h('p', { class: 'small ok' }, `正在使用：${status.llm.provider_label} · ${status.llm.model}`) : llmNotices(status),
     h('label', { class: 'row' }, h('span', { class: 'small' }, '1. 选择 AI 公司'), provSel),
     siteLine,
@@ -260,17 +261,17 @@ async function settingsPage() {
 
   // --- 花费上限 ---
   const budgetIn = h('input', { type: 'number', min: 1, max: 10000, step: 1, value: s.budget_usd });
-  content.add(h('div', { class: 'card' }, h('h3', null, '花费上限'),
+  content.add(h('div', { class: 'card' }, h('h3', null, '花费上限', helpIcon('budget')),
     h('p', { class: 'small muted' }, '每门课最多花多少美元（按用量估算）。达到上限后会自动停止，不会无限扣钱。单门课也可以在它的管理页里单独提高。'),
     h('div', { class: 'row' }, h('span', { class: 'small' }, '新课程默认上限（美元）'), budgetIn,
       h('button', { class: 'btn', onclick: async () => { try { await api.put('/settings', { budget_usd: Number(budgetIn.value) }); toast('已保存'); } catch (e) { toast(e.message, true); } } }, '保存'))));
 
   // --- 数据与退出 ---
-  content.add(h('div', { class: 'card' }, h('h3', null, '数据'),
+  content.add(h('div', { class: 'card' }, h('h3', null, '数据', helpIcon('data')),
     h('p', { class: 'small' }, '课程、学习书、书签和设置都保存在：', h('code', null, s.data_dir)),
     h('p', { class: 'small muted' }, '换电脑时把这个文件夹整个复制过去即可。卸载 Ezlearn 时可以选择一并删除。')));
   if (status.can_quit) {
-    content.add(h('div', { class: 'card' }, h('h3', null, '退出'),
+    content.add(h('div', { class: 'card' }, h('h3', null, '退出', helpIcon('quit')),
       h('p', { class: 'small muted' }, '直接关掉窗口也可以：没有任务在运行时，Ezlearn 会在两分钟后自动退出。'),
       h('button', { class: 'btn danger', onclick: () => quitApp() }, '退出 Ezlearn')));
   }
@@ -296,7 +297,7 @@ async function studio(cid) {
   const content = plainLayout();
   const busy = d.job?.status === 'running';
 
-  const budgetBtn = h('button', { class: 'btn', onclick: () => raiseBudget(cid, d) }, '提高上限');
+  const budgetBtn = [h('button', { class: 'btn', onclick: () => raiseBudget(cid, d) }, '提高上限'), helpIcon('budget')];
   setTitleContext(`${course.code} · 管理`);
   content.add(
     h('div', { class: 'row' }, h('h1', null, `${course.code} ${course.title}`), h('span', { class: 'spacer' }),
@@ -363,7 +364,7 @@ async function studio(cid) {
         h('button', { class: 'btn', onclick: () => openMaterial(cid, m.id) }, '查看'), ' ',
         h('button', { class: 'btn danger', onclick: async () => { if (confirm(`删除资料 ${m.filename}？`)) { await api.del(paths.material(cid, m.id)); studio(cid); } } }, '删除')));
   });
-  content.add(h('div', { class: 'card' }, h('h3', null, '1. 资料'),
+  content.add(h('div', { class: 'card' }, h('h3', null, '1. 资料', helpIcon('materials')),
     h('p', { class: 'muted small' }, '支持 PDF、TXT/MD、录音文字稿（VTT/SRT/TXT）、SQL、CSV；Word 和 PPT 请先另存为 PDF。不是 UTF-8 编码的文本会自动转换，转换后请确认文字没有乱码。上传后可修改每份资料的角色；当期作业会被标为"不出答案"。'),
     pending.length ? h('div', { class: 'notice row' }, h('span', null, `有 ${pending.length} 个文件的文字编码已自动转换，确认没有乱码之前不会用于生成。`), h('span', { class: 'spacer' }), h('button', { class: 'btn primary', onclick: () => confirmEncodings(cid, pending.map((m) => ({ id: m.id, filename: m.filename }))) }, '逐个确认')) : null,
     (() => {
@@ -374,14 +375,14 @@ async function studio(cid) {
         h('span', null, `有 ${n} 页没有文字（扫描件、手写或图片），现在不会用于生成。可以用图像识别把它们读出来。`), h('span', { class: 'spacer' }),
         h('button', { class: 'btn primary', disabled: busy, onclick: () => visionDialog(cid, textless, status, run) }, '图像识别这些页'));
     })(),
-    h('p', { class: 'small muted' }, '课件上有老师的手写批注（圈画、"这个必考"之类）时，程序提取文字会漏掉它们：请对这份课件点"图像识别"并选"识别全部页"。'),
+    h('p', { class: 'small muted' }, '课件上有老师的手写批注（圈画、"这个必考"之类）时，程序提取文字会漏掉它们：请对这份课件点"图像识别"并选"识别全部页"。', helpIcon('vision')),
     h('div', { class: 'row' }, fileIn, roleSel, weekIn, upBtn),
-    d.materials.length ? h('div', { class: 'tbl' }, h('table', null, h('thead', null, h('tr', null, h('th', null, '文件'), h('th', null, '角色'), h('th', null, '内容'), h('th', null, '周次'), h('th', null, ''))), h('tbody', null, matRows))) : null));
+    d.materials.length ? h('div', { class: 'tbl' }, h('table', null, h('thead', null, h('tr', null, h('th', null, '文件'), h('th', null, '角色', helpIcon('roles')), h('th', null, '内容'), h('th', null, '周次'), h('th', null, ''))), h('tbody', null, matRows))) : null));
 
   // 2. 分析
   const confirmedPlan = d.plan?.confirmed;
   const usable = d.materials.filter((m) => m.encoding?.confirmed !== false).length;
-  content.add(h('div', { class: 'card' }, h('h3', null, '2. 分析（找证据 → 判断学科 → 分析真题 → 规划章节）'),
+  content.add(h('div', { class: 'card' }, h('h3', null, '2. 分析（找证据 → 判断学科 → 分析真题 → 规划章节）', helpIcon('analyze')),
     h('div', { class: 'stages' },
       stageCard('证据抽取', `${d.evidence.length} 条（原文核实 ${d.evidence.filter((e) => e.quote_found).length}）`, () => run({ stage: 'S2' }), busy),
       stageCard('学科判定', (course.profiles || []).join(', ') || '未运行', () => run({ stage: 'S3' }), busy),
@@ -397,7 +398,7 @@ async function studio(cid) {
   if (d.plan) {
     const review = h('input', { type: 'checkbox', checked: true });
     const have = new Map(d.chapters.map((c) => [c.id, c]));
-    content.add(h('div', { class: 'card' }, h('h3', null, '4. 逐章生成与校验'),
+    content.add(h('div', { class: 'card' }, h('h3', null, '4. 逐章生成与校验', helpIcon('chapters')),
       !confirmedPlan ? h('div', { class: 'notice' }, '请先确认课程方案。') : null,
       h('div', { class: 'row' }, h('label', { class: 'small row' }, review, '生成后让模型审稿（只报告问题，不改内容）'),
         h('button', { class: 'btn primary', disabled: busy || !confirmedPlan, onclick: () => run({ stage: 'all_chapters', review: review.checked, only_missing: true }) }, '生成全部未生成的章节')),
@@ -420,7 +421,7 @@ async function studio(cid) {
       const cb = h('input', { type: 'checkbox', value: m.id, checked: !inPlan.has(m.id) && !['dataset', 'assignment', 'course_outline'].includes(m.role) });
       return h('label', { class: 'small row' }, cb, `${m.filename}（${ROLE_LABEL[m.role]}）`);
     });
-    content.add(h('div', { class: 'card' }, h('h3', null, '5. 增量更新'),
+    content.add(h('div', { class: 'card' }, h('h3', null, '5. 增量更新', helpIcon('update')),
       h('p', { class: 'muted small' }, '上传新资料（新录音稿、批注版课件、新 lab）后，勾选它们生成变更清单：软件只改受影响的部分，由你逐条确认后应用。'),
       h('div', null, boxes),
       h('button', { class: 'btn primary', disabled: busy, onclick: () => {
@@ -501,7 +502,7 @@ function visionDialog(cid, mats, status, run) {
   const force = h('input', { type: 'checkbox' });
   const close = modal('图像识别',
     h('p', null, mats.length === 1 ? mats[0].filename : `${mats.length} 个文件`),
-    h('p', { class: 'small muted' }, `由 ${status.llm.provider_label} 的 ${v.model} 看每一页图片：手写内容会单独标成"【手写批注】"，看不清的字写 [?]，不会编造。原来程序提取的印刷文字保留不变。费用按页计算，以服务商账单为准。`),
+    h('p', { class: 'small muted' }, `由 ${status.llm.provider_label} 的 ${v.model} 看每一页图片：手写内容会单独标成"【手写批注】"，看不清的字写 [?]，不会编造。原来程序提取的印刷文字保留不变。费用按页计算，以服务商账单为准。`, helpIcon('vision')),
     r1, r2,
     h('label', { class: 'row small' }, force, '已经识别过的页也重新识别'),
     h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => {
@@ -541,7 +542,7 @@ function planEditor(cid, d) {
     const { confirmed: _c, at: _a, ...p } = plan;
     try { await api.put(`${paths.course(cid)}/plan`, { plan: p, confirmed }); toast(confirmed ? '方案已确认' : '草稿已保存'); studio(cid); } catch (e) { toast(e.message, true); }
   };
-  card.add(h('h3', null, `3. 课程方案 ${d.plan.confirmed ? '（已确认）' : '（待确认）'}`),
+  card.add(h('h3', null, `3. 课程方案 ${d.plan.confirmed ? '（已确认）' : '（待确认）'}`, helpIcon('plan')),
     h('p', { class: 'small' }, h('b', null, '目录依据：'), plan.toc_basis),
     plan.questions_for_user.length ? h('div', { class: 'notice' }, h('b', null, '需要你确认的问题：'), h('ul', null, plan.questions_for_user.map((q) => h('li', null, q)))) : null,
     plan.not_doing.length ? h('p', { class: 'small muted' }, `不做：${plan.not_doing.join('；')}`) : null,
@@ -706,7 +707,7 @@ async function reader(cid, chid, anc) {
   const drawNav = () => {
     clear(nav).add(h('a', { class: `ch ${!chid ? 'active' : ''}`, href: readHref(cid) }, h('span', { class: 'no' }, '⌂'), h('span', { class: 'tt' }, '课程首页', h('small', null, '考核、真题与重点'))));
     if (bookmarks.length) {
-      nav.add(h('details', { class: 'bm-list', open: true }, h('summary', { class: 'grp' }, `🔖 书签（${bookmarks.length}）`),
+      nav.add(h('details', { class: 'bm-list', open: true }, h('summary', { class: 'grp' }, `🔖 书签（${bookmarks.length}）`, helpIcon('bookmarks')),
         [...bookmarks].reverse().map((b) => h('div', { class: 'bm-row' },
           h('a', { href: readHref(cid, b.chapter_id, b.anchor), title: chTitle.get(b.chapter_id) || '' }, b.label),
           h('button', { class: 'tp-btn', title: '删除书签', onclick: () => removeBookmark(b) }, '×')))));
@@ -788,7 +789,7 @@ async function reader(cid, chid, anc) {
       (chapter.lecture_dates || []).map((x) => h('span', { class: 'chip' }, `课堂 ${x}`)),
       verifyChip ? h('span', { class: `chip ${verifyChip.errors ? 'hot' : 'good'}`, title: '自动校验结果' }, verifyChip.errors ? `校验：${verifyChip.errors} 个问题` : '✓ 已通过自动校验') : null),
     h('div', { class: 'toolbar' }, h('button', { class: 'btn', onclick: () => toggleAll(true) }, '展开全部例子与解答'), h('button', { class: 'btn', onclick: () => toggleAll(false) }, '收起全部'),
-      h('button', { class: 'btn', title: '在当前看到的位置加书签', onclick: () => addBookmark(currentHeading()) }, '🔖 在这里加书签'),
+      h('button', { class: 'btn', title: '在当前看到的位置加书签', onclick: () => addBookmark(currentHeading()) }, '🔖 在这里加书签'), helpIcon('reading'),
       h('label', { class: 'small row' }, doneCb, '已掌握'))));
   content.add(renderBlocks(chapter.blocks, ctx));
   // 每个小标题旁边的书签按钮
@@ -840,7 +841,7 @@ function readerHome(cid, d, chapters, ctx, progress) {
       h('p', null, `讲解语言：${course.teaching_language}；考试语言：${course.exam_language}。术语格式为"讲解语言 (考试语言)"，可在左下角隐藏英文。`),
       last?.chapter_id ? h('p', null, h('a', { class: 'btn primary', href: readHref(cid, last.chapter_id, last.anchor) }, `继续阅读：${last.title || last.chapter_id}`)) : null,
       h('div', { class: 'legend' }, h('span', { class: 'badge key' }, '★ 重点'), h('span', { class: 'badge exam' }, '✎ 真题'), h('span', { class: 'badge skip' }, '⊘ 不考'), h('span', { class: 'badge inf' }, '推断'),
-        h('span', { class: 'small muted' }, '每个标记都可点开查看老师原话或资料出处；没有证据的不会标"不考"。'))),
+        h('span', { class: 'small muted' }, '每个标记都可点开查看老师原话或资料出处；没有证据的不会标"不考"。'), helpIcon('marks'))),
     course.coverage_note ? h('div', { class: 'notice' }, course.coverage_note) : null,
     h('h2', null, '章节'),
     chapters.length ? h('div', { class: 'tbl' }, h('table', null, h('tbody', null, chapters.map((c) => h('tr', null, h('td', null, c.number), h('td', null, h('a', { href: readHref(cid, c.id) }, c.title), c.title_exam_lang ? h('span', { class: 'en' }, c.title_exam_lang) : null, progress?.mastered?.includes(c.id) ? h('span', { class: 'chip good' }, '✓ 已掌握') : null), h('td', null, c.week || ''), h('td', { class: 'w' }, dots(c.weight))))))) : h('p', { class: 'muted' }, '还没有生成章节。到"管理"页运行流水线。'),

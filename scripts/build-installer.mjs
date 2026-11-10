@@ -121,7 +121,11 @@ async function smokeTest() {
   const code = `const m = await import(${JSON.stringify(new URL(`file:///${path.join(STAGE, 'app', 'server', 'ingest.js').replace(/\\/g, '/')}`).href)});
 const r = await m.parseFile('a.pdf', (await import('node:fs')).readFileSync(${JSON.stringify(fixture)}));
 if (r.pages.length !== 2) throw new Error('pdf pages ' + r.pages.length);
-console.log('pdf ok');`;
+const pr = await import(${JSON.stringify(new URL(`file:///${path.join(STAGE, 'app', 'server', 'pagerender.js').replace(/\\/g, '/')}`).href)});
+const doc = await pr.openPdf((await import('node:fs')).readFileSync(${JSON.stringify(fixture)}));
+const png = await doc.render(1); await doc.close();
+if (png.subarray(1, 4).toString() !== 'PNG') throw new Error('page render failed');
+console.log('pdf ok, page render ok');`;
   execFileSync(node, ['--input-type=module', '-e', code], { env: { ...process.env, EZLEARN_DATA_DIR: tmp }, stdio: 'inherit' });
   // 2) 启动服务，检查 /healthz 与首页
   const child = spawn(node, [path.join(STAGE, 'app', 'server', 'index.js')], {
