@@ -45,7 +45,8 @@ export const config = Object.freeze({
   budgetUsdPerCourse: num('EZLEARN_BUDGET_USD', 20, 0, 10000),
   fakeLLM: process.env.EZLEARN_FAKE_LLM === '1',
   limits: Object.freeze({
-    uploadBytes: int('EZLEARN_MAX_UPLOAD_MB', 50, 1, 500) * 1024 * 1024,
+    // 扫描版教材常有几十到上百 MB
+    uploadBytes: int('EZLEARN_MAX_UPLOAD_MB', 150, 1, 500) * 1024 * 1024,
     filesPerUpload: 20,
     jsonBody: '2mb',
     pdfPages: 1500,

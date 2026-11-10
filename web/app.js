@@ -381,14 +381,17 @@ async function studio(cid) {
 
   // 2. 分析
   const confirmedPlan = d.plan?.confirmed;
-  const usable = d.materials.filter((m) => m.encoding?.confirmed !== false).length;
+  const usableMats = d.materials.filter((m) => m.encoding?.confirmed !== false);
+  const usable = usableMats.length;
+  const noText = usable > 0 && usableMats.every((m) => !m.text_pages);
   content.add(h('div', { class: 'card' }, h('h3', null, '2. 分析（找证据 → 判断学科 → 分析真题 → 规划章节）', helpIcon('analyze')),
     h('div', { class: 'stages' },
       stageCard('证据抽取', `${d.evidence.length} 条（原文核实 ${d.evidence.filter((e) => e.quote_found).length}）`, () => run({ stage: 'S2' }), busy),
       stageCard('学科判定', (course.profiles || []).join(', ') || '未运行', () => run({ stage: 'S3' }), busy),
       stageCard('考核与真题', d.exam ? `${d.exam.papers.length} 份真题已映射` : '未运行', () => run({ stage: 'S4' }), busy),
       stageCard('课程方案', d.plan ? `${d.plan.chapters.length} 章${confirmedPlan ? '（已确认）' : '（待确认）'}` : '未运行', () => run({ stage: 'S5' }), busy)),
-    h('div', { class: 'row' }, h('button', { class: 'btn primary', disabled: busy || !usable, onclick: () => run({ stage: 'analyze' }) }, '一键分析'),
+    noText ? h('div', { class: 'notice' }, '资料里还没有任何可读的文字（扫描件或图片）。请先在"1. 资料"里点"图像识别"把它们读出来，再做分析。') : null,
+    h('div', { class: 'row' }, h('button', { class: 'btn primary', disabled: busy || !usable || noText, onclick: () => run({ stage: 'analyze' }) }, '一键分析'),
       h('span', { class: 'muted small' }, '方案生成后需要你确认，才会开始逐章生成。'))));
 
   // 3. 方案确认

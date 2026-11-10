@@ -194,6 +194,7 @@ api.get('/courses/:cid', wrap(async (req, res) => {
     materials: ctx.materials.map(({ pages, sql, ...m }) => ({
       ...m, page_count: pages.length, vision_pages: pages.filter((p) => p.needs_vision).length, has_sql: Boolean(sql),
       recognised_pages: pages.filter((p) => p.vision?.done).length, handwriting_pages: pages.filter((p) => p.vision?.handwriting).length,
+      text_pages: pages.filter((p) => !p.needs_vision && p.text.trim().length >= 20).length,
       unclear_pages: pages.filter((p) => p.vision?.confidence === 'low').length,
     })),
     evidence: ctx.evidence,

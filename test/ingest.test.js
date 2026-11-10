@@ -40,7 +40,7 @@ test('role guessing handles real-world UNSW-style file names', () => {
     'Ass2.pdf': 'assignment', 'DATA9001_Ass1.pdf': 'assignment', 'A1-z5000000-Name.pdf': 'assignment', '2026_Assignment3_DATA9001.pdf': 'assignment',
     'TUT9-sol.pdf': 'tutorial_solution', 'TUT1Ans.pdf': 'tutorial_solution', 'TUT7-reference-answers.pdf': 'tutorial_solution', 'TUT8-COMP1.pdf': 'tutorial',
     'additional ex(stat).pdf': 'tutorial', 'additional ex(stat) ans.pdf': 'tutorial_solution',
-    'classification.pdf': 'other',
+    'classification.pdf': 'other', '化学 九年级 上册 课本.pdf': 'textbook', '高中物理教科书.pdf': 'textbook',
   };
   for (const [f, role] of Object.entries(cases)) assert.equal(guessRole(f), role, f);
   // 文件名看不出来时看开头文字

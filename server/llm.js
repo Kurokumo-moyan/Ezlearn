@@ -172,8 +172,8 @@ export async function callJSON({ courseId, stage, system, user, schema, maxToken
   // 有图片时：Anthropic 用 image 块，OpenAI 兼容接口用 image_url（data URL）
   const withImages = (text) => {
     if (!images?.length) return text;
-    if (P.kind === 'anthropic') return [...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: im } })), { type: 'text', text }];
-    return [{ type: 'text', text }, ...images.map((im) => ({ type: 'image_url', image_url: { url: `data:image/png;base64,${im}` } }))];
+    if (P.kind === 'anthropic') return [...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: im } })), { type: 'text', text }];
+    return [{ type: 'text', text }, ...images.map((im) => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${im}` } }))];
   };
   const messages = [{ role: 'user', content: withImages(firstUser()) }];
 

@@ -11,15 +11,15 @@ after(() => S.close());
 
 const PDF = fs.readFileSync(new URL('./fixtures/two-pages.pdf', import.meta.url));
 
-test('PDF pages render to PNG; images are re-encoded', async () => {
+test('PDF pages render to JPEG; images are re-encoded', async () => {
   const { openPdf, normalizeImage } = await import('../server/pagerender.js');
   const doc = await openPdf(PDF);
   assert.equal(doc.pages, 2);
-  const png = await doc.render(1);
-  assert.equal(png.subarray(1, 4).toString(), 'PNG');
+  const img = await doc.render(1);
+  assert.deepEqual([...img.subarray(0, 3)], [0xff, 0xd8, 0xff]);
   await doc.close();
-  const again = await normalizeImage(png);
-  assert.equal(again.subarray(1, 4).toString(), 'PNG');
+  const again = await normalizeImage(img);
+  assert.deepEqual([...again.subarray(0, 3)], [0xff, 0xd8, 0xff]);
 });
 
 test('image uploads: magic bytes checked, stored as a textless page', async () => {
@@ -29,7 +29,7 @@ test('image uploads: magic bytes checked, stored as a textless page', async () =
   const png = await doc.render(2);
   await doc.close();
   const fd = new FormData();
-  fd.append('files', new Blob([png]), 'whiteboard.png');
+  fd.append('files', new Blob([png]), 'whiteboard.jpg');
   fd.append('files', new Blob([Buffer.from('not really a jpeg')]), 'fake.jpg');
   const r = await S.call('POST', `/api/courses/${cid}/materials`, fd);
   assert.equal(r.json.created.length, 1);

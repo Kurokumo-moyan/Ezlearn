@@ -120,7 +120,8 @@ const VISION_SYSTEM = `你是课程资料的转写员。你会看到课程资料
 
 按下面的要求输出一个 JSON 对象：
 1. handwriting：逐条列出页面上所有手写内容（老师的批注、圈画旁的文字、手写公式、手写答案）。原样转写，不翻译、不改写、不补全；看不清的字写 [?]；公式用 LaTeX 写在 $...$ 里。手写内容用箭头、圈、下划线指向某段印刷文字时，写成"（指向：被指的印刷文字）手写内容"；只有圈画没有文字时写"（圈出：被圈的印刷文字）"。没有手写就给空数组。
-2. text：如果已提取的印刷文字为空或明显不完整（扫描件、截图、照片），按阅读顺序完整转写整页文字（包括手写），表格每行用 | 分隔，公式用 LaTeX。如果已提取的印刷文字已经完整，text 写空字符串，不要重复。
+2. text：如果已提取的印刷文字为空或明显不完整（扫描件、截图、照片），按阅读顺序完整转写整页文字（包括手写）：标题单独一行，表格每行用 | 分隔，数学公式和化学式用 LaTeX（如 $\\mathrm{P_2O_5}$、$\\mathrm{Mg^{2+}}$、$x^2$），选择题保留题号和 A/B/C/D 选项，页眉页脚里的页码照抄。插图、照片、实验装置图不能转成文字时，用一行【图：……】简要描述画的是什么、图里标注的字母和文字。如果已提取的印刷文字已经完整，text 写空字符串，不要重复。
+   **照原样转写，不要改正**：资料里的错别字、错误写法（例如选择题里故意写错的选项）都原样保留。
 3. has_handwriting：页面上有没有手写内容或手写圈画。
 4. confidence：整体看得清吗：high / medium / low。
 5. notes：需要提醒用户的情况（例如"右下角被遮挡""第 3 行字迹无法辨认"），没有就写空字符串。
@@ -148,36 +149,51 @@ export async function runVision(courseId, materialIds, mode = 'textless', force 
   let k = 0;
   let hw = 0;
   let low = 0;
+  let failure = null;
+  const CONCURRENCY = 3; // 同时识别 3 页：200 页的课本从几十分钟缩短到十几分钟
   for (const m of mats) {
     const pages = todo.filter((x) => x.m === m).map((x) => x.p);
     if (!pages.length) continue;
     const raw = await readRaw(courseId, 'raw', `${m.id}.bin`);
     const doc = m.kind === 'pdf' ? await openPdf(raw) : null;
-    try {
-      for (const p of pages) {
-        k++;
-        log('vision_page', { file: m.filename, page: p.n, k, n: todo.length });
-        log.frac((k - 1) / todo.length);
-        const png = doc ? await doc.render(p.n) : await normalizeImage(raw);
-        const printed = p.text_layer ?? p.text ?? '';
-        const out = await callJSON({
-          courseId, stage: 'S1V', system: VISION_SYSTEM, schema: VisionOut, maxTokens: 8000, vision: true, images: [png.toString('base64')],
-          user: `资料：${m.filename}（${m.role}），第 ${p.n} 页。\n\n${wrapData('page_text', printed || '（没有提取到文字）')}`,
-        });
-        let text = out.text.trim() && printed.trim().length < 200 ? out.text.trim() : printed;
-        if (out.text.trim() && printed.trim().length >= 200) text = printed; // 印刷文字完整时以程序提取的为准
-        if (out.handwriting.length) text += `${text ? '\n\n' : ''}【手写批注】\n${out.handwriting.map((x) => `- ${x}`).join('\n')}`;
-        p.text_layer = printed;
-        p.text = text.slice(0, 30000);
-        p.needs_vision = p.text.trim().length < 20;
-        p.vision = { done: true, handwriting: out.has_handwriting, confidence: out.confidence, notes: out.notes.slice(0, 500), at: new Date().toISOString() };
-        if (out.has_handwriting) hw++;
-        if (out.confidence === 'low') low++;
-        await writeJSON(courseId, m, 'materials', `${m.id}.json`); // 每页都保存：中途出错也不白花钱
+    let saving = Promise.resolve();
+    const save = () => { saving = saving.then(() => writeJSON(courseId, m, 'materials', `${m.id}.json`)); return saving; };
+    const queue = [...pages];
+    const worker = async () => {
+      while (queue.length && !failure) {
+        const p = queue.shift();
+        const my = ++k;
+        log('vision_page', { file: m.filename, page: p.n, k: my, n: todo.length });
+        try {
+          const img = doc ? await doc.render(p.n) : await normalizeImage(raw);
+          const printed = p.text_layer ?? p.text ?? '';
+          const out = await callJSON({
+            courseId, stage: 'S1V', system: VISION_SYSTEM, schema: VisionOut, maxTokens: 8000, vision: true, images: [img.toString('base64')],
+            user: `资料：${m.filename}（${m.role}），第 ${p.n} 页。\n\n${wrapData('page_text', printed || '（没有提取到文字）')}`,
+          });
+          let text = out.text.trim() && printed.trim().length < 200 ? out.text.trim() : printed;
+          if (out.text.trim() && printed.trim().length >= 200) text = printed; // 印刷文字完整时以程序提取的为准
+          if (out.handwriting.length) text += `${text ? '\n\n' : ''}【手写批注】\n${out.handwriting.map((x) => `- ${x}`).join('\n')}`;
+          p.text_layer = printed;
+          p.text = text.slice(0, 30000);
+          p.needs_vision = p.text.trim().length < 20;
+          p.vision = { done: true, handwriting: out.has_handwriting, confidence: out.confidence, notes: out.notes.slice(0, 500), at: new Date().toISOString() };
+          if (out.has_handwriting) hw++;
+          if (out.confidence === 'low') low++;
+          await save(); // 每页都保存：中途出错也不白花钱
+          log.frac(k / todo.length);
+        } catch (e) {
+          failure ||= e;
+        }
       }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pages.length) }, worker));
+      await saving;
     } finally {
       if (doc) await doc.close();
     }
+    if (failure) throw failure;
   }
   log('vision_done', { n: k, hw, low });
   log.frac(1);

@@ -247,5 +247,5 @@ test('vision calls send the page image as an OpenAI-style data URL with the visi
   const content = requests[0].body.messages[1].content;
   assert.ok(Array.isArray(content));
   assert.equal(content[0].type, 'text');
-  assert.equal(content[1].image_url.url, 'data:image/png;base64,aGVsbG8=');
+  assert.equal(content[1].image_url.url, 'data:image/jpeg;base64,aGVsbG8=');
 });

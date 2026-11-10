@@ -35,7 +35,7 @@ export function guessRole(filename, headText = '') {
   if (/annot|批注/.test(base)) return 'annotated_slides';
   // 课件：slides / lecture / 讲义，或 L1、L10、W3、week 3 这类编号
   if (/slide|lec|讲义|课件/.test(base) || /^(l|w|wk|week)[-_ ]?\d{1,2}([^0-9]|$)/.test(base)) return 'slides';
-  if (/textbook|book|教材|chapter/.test(base)) return 'textbook';
+  if (/textbook|book|教材|课本|教科书|chapter/.test(base)) return 'textbook';
   if (/note|笔记/.test(base)) return 'lecture_notes';
   return guessRoleFromText(headText, sol);
 }
