@@ -51,6 +51,10 @@ export async function writeJSON(courseId, value, ...parts) {
   await writeAtomic(file(courseId, ...parts), JSON.stringify(value, null, 1));
 }
 
+export async function readRaw(courseId, ...parts) {
+  return fs.readFile(file(courseId, ...parts));
+}
+
 export async function writeRaw(courseId, buf, ...parts) {
   await writeAtomic(file(courseId, ...parts), buf);
 }

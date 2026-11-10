@@ -171,7 +171,8 @@ export async function openaiCall(p, req) {
     usage = { input: Math.max(0, (u.prompt_tokens || 0) - cached), cacheRead: cached, cacheWrite: 0, output: u.completion_tokens || 0, estimated: false };
   } else {
     // 平台没返回用量：按字符数保守估算（约 2 字符 / token），保证预算上限仍然生效
-    const inChars = body.messages.reduce((n, m) => n + String(m.content).length, 0);
+    // 图片按约 6000 字符（≈1600 token）估算
+    const inChars = body.messages.reduce((n, m) => n + (Array.isArray(m.content) ? m.content.reduce((k, c) => k + (c.type === 'text' ? c.text.length : 6000), 0) : String(m.content).length), 0);
     usage = { input: Math.ceil(inChars / 2), cacheRead: 0, cacheWrite: 0, output: Math.ceil(r.text.length / 2), estimated: true };
   }
 

@@ -5,7 +5,8 @@ import { config } from './config.js';
 import { MATERIAL_ROLES } from './schemas.js';
 import { detectText, decodeAs, ENCODINGS } from './encoding.js';
 
-export const ALLOWED_EXT = new Set(['.pdf', '.txt', '.md', '.vtt', '.srt', '.csv', '.sql']);
+export const ALLOWED_EXT = new Set(['.pdf', '.txt', '.md', '.vtt', '.srt', '.csv', '.sql', '.png', '.jpg', '.jpeg']);
+export const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg']);
 
 // 文件名里的"答案"标记；"no sol / without answers" 之类的反义写法不算
 const SOL = /(sol(ution)?s?\b|sol\b|[-_ (]sol|ans(wer)?s?\b|[-_ (]ans|reference[-_ ]?answers|答案|解答|参考答案)/;
@@ -190,6 +191,13 @@ export async function parseFile(filename, buf, { encoding } = {}) {
   const ext = path.extname(filename).toLowerCase();
   if (!ALLOWED_EXT.has(ext)) throw Object.assign(new Error(`不支持的文件类型 ${ext}`), { status: 415 });
   if (ext === '.pdf') return { kind: 'pdf', pages: capChars(await pdfPages(buf)) };
+  if (IMAGE_EXT.has(ext)) {
+    // 图片（手写笔记、板书照片）：校验魔数，内容要等"图像识别"后才有文字
+    const png = buf.length > 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const jpg = buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    if (!(ext === '.png' ? png : jpg)) throw Object.assign(new Error('不是有效的图片文件'), { status: 415 });
+    return { kind: 'image', pages: [{ n: 1, text: '', needs_vision: true }] };
+  }
   const dec = decodeText(buf, encoding);
   const text = dec.text;
   const enc = { encoding: dec.encoding, label: dec.label, needs_confirm: dec.needsConfirm, candidates: dec.candidates };

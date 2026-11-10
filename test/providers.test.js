@@ -236,3 +236,16 @@ test('settings saved in the app override env immediately; key never leaves via s
   assert.equal(llm.llmStatus().model, 'mock-model');
   settings.saveSettings({ keys: {}, models: {} });
 });
+
+test('vision calls send the page image as an OpenAI-style data URL with the vision model', async () => {
+  const { z } = await import('zod');
+  requests.length = 0;
+  script = [(_q, res) => sse(res, ['{"text":"","handwriting":["x"],"has_handwriting":true,"confidence":"high","notes":""}'])];
+  const out = await llm.callJSON({ courseId: COURSE + '-v', stage: 'S1V', system: 's', user: 'page', vision: true, images: ['aGVsbG8='],
+    schema: z.object({ text: z.string(), handwriting: z.array(z.string()), has_handwriting: z.boolean(), confidence: z.string(), notes: z.string() }) });
+  assert.equal(out.handwriting[0], 'x');
+  const content = requests[0].body.messages[1].content;
+  assert.ok(Array.isArray(content));
+  assert.equal(content[0].type, 'text');
+  assert.equal(content[1].image_url.url, 'data:image/png;base64,aGVsbG8=');
+});

@@ -6,7 +6,7 @@ import { toOutputSchema } from './schemas.js';
 import { readJSON, writeJSON } from './storage.js';
 import { safeLog } from './security.js';
 import { openaiCall, openaiListModels, FormatUnsupported, TokenLimitTooHigh, ProviderError } from './llm-openai.js';
-import { getProvider, apiKeyFor, budgetDefault } from './settings.js';
+import { getProvider, apiKeyFor, budgetDefault, loadSettings } from './settings.js';
 import { resolveProvider, PRESETS } from './providers.js';
 
 const clients = new Map(); // apiKey -> Anthropic client
@@ -139,15 +139,29 @@ async function providerCall(P, req) {
  * @param {string} o.user
  * @param {import('zod').ZodType} o.schema
  */
-export async function callJSON({ courseId, stage, system, user, schema, maxTokens = 64000 }) {
+/** 当前提供商用于图像识别的模型；不支持时返回 null。 */
+export function visionModelOf(P = getProvider()) {
+  const saved = loadSettings().vision_models?.[P.id];
+  if (saved) return saved;
+  const preset = PRESETS[P.id]?.visionModel;
+  if (preset === 'same') return P.model;
+  return preset || null;
+}
+
+export async function callJSON({ courseId, stage, system, user, schema, maxTokens = 64000, images = null, vision = false }) {
   if (impl || config.fakeLLM) {
     const fake = impl || (await import('./llm-fake.js')).fakeLLM;
     const delay = Number(process.env.EZLEARN_FAKE_DELAY_MS) || 0; // 仅用于演示 / 手动测试进度条
     if (delay) await new Promise((r) => setTimeout(r, Math.min(delay, 10000)));
-    return schema.parse(await fake({ stage, system, user }));
+    return schema.parse(await fake({ stage, system, user, images }));
   }
-  const P = getProvider(); // 每次调用取当前设置：界面改了立即生效
+  let P = getProvider(); // 每次调用取当前设置：界面改了立即生效
   if (P.error) throw new LLMError('config', P.error);
+  if (vision) {
+    const vm = visionModelOf(P);
+    if (!vm) throw new LLMError('config', `${P.label} 不支持图像识别。请到"设置"里换成 Claude、GPT、Gemini，或填写这家公司的图像识别模型。`);
+    P = { ...P, model: vm };
+  }
   await assertBudget(courseId);
   const jsonSchema = toOutputSchema(schema);
   let format = P.kind === 'anthropic' ? 'json_schema' : P.format;
@@ -155,7 +169,13 @@ export async function callJSON({ courseId, stage, system, user, schema, maxToken
   // 非 Anthropic 的 json_schema 是 strict:false（不强制），所以除了 Anthropic 都把 schema 写进提示词。
   const schemaHint = `\n\n只输出一个 JSON 对象，不要任何其他文字，不要用代码块包裹。它必须符合以下 JSON Schema：\n${JSON.stringify(jsonSchema)}`;
   const firstUser = () => (P.kind === 'anthropic' && format === 'json_schema' ? user : user + schemaHint);
-  const messages = [{ role: 'user', content: firstUser() }];
+  // 有图片时：Anthropic 用 image 块，OpenAI 兼容接口用 image_url（data URL）
+  const withImages = (text) => {
+    if (!images?.length) return text;
+    if (P.kind === 'anthropic') return [...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: im } })), { type: 'text', text }];
+    return [{ type: 'text', text }, ...images.map((im) => ({ type: 'image_url', image_url: { url: `data:image/png;base64,${im}` } }))];
+  };
+  const messages = [{ role: 'user', content: withImages(firstUser()) }];
 
   let attempts = 0;
   let downgrades = 0;
@@ -171,7 +191,7 @@ export async function callJSON({ courseId, stage, system, user, schema, maxToken
           safeLog(`[llm] ${stage}: ${format} rejected by ${P.id}, falling back to ${next}`);
           format = next;
           downgrades++;
-          messages[0] = { role: 'user', content: firstUser() };
+          messages[0] = { role: 'user', content: withImages(firstUser()) };
           continue;
         }
       }

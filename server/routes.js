@@ -9,7 +9,7 @@ import { readJSON, writeJSON, writeRaw, listJSON, listCourses, deleteCourse, rem
 import { parseFile, guessRole, validRole, pagesForRole, ALLOWED_EXT } from './ingest.js';
 import { PROFILES } from './prompts.js';
 import { PlanOut, MATERIAL_ROLES } from './schemas.js';
-import { llmStatus, listModels, courseBudget } from './llm.js';
+import { llmStatus, listModels, courseBudget, visionModelOf } from './llm.js';
 import { PRESETS, checkBaseURL } from './providers.js';
 import { loadSettings, saveSettings, getProvider, keyTail, budgetDefault } from './settings.js';
 import { ENCODINGS, decodeAs } from './encoding.js';
@@ -17,7 +17,7 @@ import { touch, requestShutdown, canShutdown } from './lifecycle.js';
 import { seedDemo } from '../scripts/seed-demo.js';
 import {
   loadCtx, saveCourse, startJob, jobOf, runEvidence, runProfile, runExam, runPlan, runChapter,
-  runUpdate, applyUpdate, reverifyChapter, searchIndex, allJobs, runningJobCount,
+  runUpdate, applyUpdate, reverifyChapter, searchIndex, allJobs, runningJobCount, runVision,
 } from './pipeline.js';
 
 export const api = express.Router();
@@ -30,7 +30,13 @@ const parse = (schema, v) => {
 };
 const cid = (req) => assertId(req.params.cid, 'course id');
 
-api.get('/status', (_req, res) => res.json({ llm: llmStatus(), budget_usd: budgetDefault(), can_quit: canShutdown() }));
+api.get('/status', (_req, res) => {
+  const P = getProvider();
+  const vm = P.error ? null : visionModelOf(P);
+  // 每页约 2200 输入 token（图片 + 提示）+ 400 输出 token，按当前提供商的价格估算
+  const usdPerPage = P.price ? +((2200 * P.price[0] + 400 * P.price[1]) / 1e6).toFixed(4) : null;
+  res.json({ llm: llmStatus(), budget_usd: budgetDefault(), can_quit: canShutdown(), vision: { supported: Boolean(vm), model: vm, usd_per_page: usdPerPage } });
+});
 
 // ---------- 心跳 / 退出 ----------
 api.post('/heartbeat', (_req, res) => { touch(); res.json({ ok: true }); });
@@ -66,6 +72,7 @@ function settingsView() {
     providers: Object.entries(PRESETS).map(([id, x]) => ({
       id, label: x.label, default_model: x.model, key_site: KEY_SITES[id] || '', needs_base_url: id === 'custom',
       has_key: Boolean(keyTail(id)), key_tail: keyTail(id), saved_model: s.models[id] || '',
+      default_vision_model: x.visionModel === 'same' ? '' : (x.visionModel || null), saved_vision_model: s.vision_models?.[id] || '', vision_supported: x.visionModel !== null || Boolean(s.vision_models?.[id]),
     })),
   };
 }
@@ -82,6 +89,7 @@ api.put('/settings', wrap(async (req, res) => {
     api_key: KeyStr.optional(),
     clear_key: ProviderId.optional(),
     model: ModelStr.or(z.literal('')).optional(),
+    vision_model: ModelStr.or(z.literal('')).optional(),
     base_url: z.string().trim().max(500).optional(),
     budget_usd: z.number().min(1).max(10000).optional(),
   }).strict(), req.body);
@@ -91,6 +99,8 @@ api.put('/settings', wrap(async (req, res) => {
   if (b.api_key) s.keys[pid] = b.api_key;
   if (b.clear_key) delete s.keys[b.clear_key];
   if (b.model !== undefined) { if (b.model) s.models[pid] = b.model; else delete s.models[pid]; }
+  s.vision_models ||= {};
+  if (b.vision_model !== undefined) { if (b.vision_model) s.vision_models[pid] = b.vision_model; else delete s.vision_models[pid]; }
   if (b.base_url !== undefined) {
     if (b.base_url) {
       try { s.base_url = checkBaseURL(b.base_url).url; } catch (e) { throw Object.assign(new Error(e.message), { status: 400 }); }
@@ -181,7 +191,11 @@ api.get('/courses/:cid', wrap(async (req, res) => {
   for (const c of chapters) repById.set(c.id, await readJSON(id, 'verify', `${c.id}.json`));
   res.json({
     course: ctx.course,
-    materials: ctx.materials.map(({ pages, sql, ...m }) => ({ ...m, page_count: pages.length, vision_pages: pages.filter((p) => p.needs_vision).length, has_sql: Boolean(sql) })),
+    materials: ctx.materials.map(({ pages, sql, ...m }) => ({
+      ...m, page_count: pages.length, vision_pages: pages.filter((p) => p.needs_vision).length, has_sql: Boolean(sql),
+      recognised_pages: pages.filter((p) => p.vision?.done).length, handwriting_pages: pages.filter((p) => p.vision?.handwriting).length,
+      unclear_pages: pages.filter((p) => p.vision?.confidence === 'low').length,
+    })),
     evidence: ctx.evidence,
     coverage: ctx.coverage,
     profile: await readJSON(id, 'profile.json'),
@@ -324,6 +338,7 @@ const RunReq = z.discriminatedUnion('stage', [
   z.object({ stage: z.literal('chapter'), chapter_id: z.string().max(64), review: z.boolean().default(true) }).strict(),
   z.object({ stage: z.literal('all_chapters'), review: z.boolean().default(true), only_missing: z.boolean().default(true) }).strict(),
   z.object({ stage: z.literal('update'), material_ids: z.array(z.string().max(64)).min(1).max(50) }).strict(),
+  z.object({ stage: z.literal('vision'), material_ids: z.array(z.string().max(64)).min(1).max(50), mode: z.enum(['textless', 'all']), force: z.boolean().default(false) }).strict(),
 ]);
 
 api.post('/courses/:cid/run', wrap(async (req, res) => {
@@ -351,6 +366,7 @@ api.post('/courses/:cid/run', wrap(async (req, res) => {
       return out;
     }; break;
     case 'update': r.material_ids.forEach((m) => assertId(m)); fn = (log) => runUpdate(id, r.material_ids, log); break;
+    case 'vision': r.material_ids.forEach((m) => assertId(m)); fn = (log) => runVision(id, r.material_ids, r.mode, r.force, log); break;
     default: throw Object.assign(new Error('bad stage'), { status: 400 });
   }
   res.status(202).json(startJob(id, r.stage, fn, course));

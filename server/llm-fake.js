@@ -14,8 +14,10 @@ function manifestOf(user) {
 
 const KW = /(not examinable|won't (be )?(assess|test|examin)|skip|important|focus|exam|不考|重点|考试)/i;
 
-export async function fakeLLM({ stage, user }) {
+export async function fakeLLM({ stage, user, images }) {
   switch (stage) {
+    case 'S1V':
+      return { text: images?.length ? '（假模型转写）Week 3 · Linear regression · 老师手写：this is examinable' : '', handwriting: ['this is examinable'], has_handwriting: true, confidence: 'medium', notes: '' };
     case 'S2': {
       const evidence = [];
       for (const mm of user.matchAll(/<material id="([^"]+)"[^>]*>\n([\s\S]*?)\n<\/material>/g)) {

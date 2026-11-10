@@ -112,6 +112,15 @@ export const PlanOut = z.object({
   not_doing: z.array(S(500)).max(20),
 });
 
+/** 图像识别（转写）一页的结果。 */
+export const VisionOut = z.object({
+  text: z.string().max(30000),
+  handwriting: z.array(z.string().max(2000)).max(80),
+  has_handwriting: z.boolean(),
+  confidence: z.enum(['high', 'medium', 'low']),
+  notes: z.string().max(1000),
+});
+
 export const ReviewOut = z.object({
   issues: z.array(z.object({ block_index: z.number().int(), severity: z.enum(['error', 'warn']), problem: S(1000), suggestion: S(1500) })).max(100),
 });

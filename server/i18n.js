@@ -3,7 +3,7 @@
 const MSG = {
   zh: {
     'job.analyze': '一键分析', 'job.S2': '证据抽取', 'job.S3': '学科判定', 'job.S4': '考核与真题分析', 'job.S5': '课程方案',
-    'job.chapter': '生成章节', 'job.all_chapters': '生成全部章节', 'job.update': '增量更新',
+    'job.chapter': '生成章节', 'job.all_chapters': '生成全部章节', 'job.update': '增量更新', 'job.vision': '图像识别',
     start: '开始：{kind}',
     s2_batch: '正在从资料里找老师的原话（第 {k}/{n} 批）',
     s2_done: '证据抽取完成：{count} 条，其中 {found} 条已在原文中核实',
@@ -18,6 +18,8 @@ const MSG = {
     s7_review: '正在让模型审读第 {number} 章',
     ch_done: '第 {number} 章完成：{errors} 个错误，{warnings} 个警告',
     ch_skip: '跳过已生成的第 {number} 章',
+    vision_page: '正在识别 {file} 第 {page} 页（{k}/{n}）',
+    vision_done: '图像识别完成：{n} 页，其中 {hw} 页有手写内容，{low} 页看不太清',
     s8: '正在对比新资料，整理变更清单',
     s8_done: '变更清单完成：{n} 项待你确认',
     done: '全部完成',
@@ -25,7 +27,7 @@ const MSG = {
   },
   en: {
     'job.analyze': 'Analyse course', 'job.S2': 'Evidence extraction', 'job.S3': 'Subject detection', 'job.S4': 'Assessment & past exams', 'job.S5': 'Course plan',
-    'job.chapter': 'Write chapter', 'job.all_chapters': 'Write all chapters', 'job.update': 'Incremental update',
+    'job.chapter': 'Write chapter', 'job.all_chapters': 'Write all chapters', 'job.update': 'Incremental update', 'job.vision': 'Image recognition',
     start: 'Started: {kind}',
     s2_batch: 'Finding what the lecturer actually said (batch {k}/{n})',
     s2_done: 'Evidence done: {count} items, {found} verified against the source',
@@ -40,6 +42,8 @@ const MSG = {
     s7_review: 'Model review of chapter {number}',
     ch_done: 'Chapter {number} done: {errors} errors, {warnings} warnings',
     ch_skip: 'Skipping chapter {number} (already written)',
+    vision_page: 'Reading {file} page {page} ({k}/{n})',
+    vision_done: 'Image recognition done: {n} pages, {hw} with handwriting, {low} hard to read',
     s8: 'Comparing new materials and listing changes',
     s8_done: 'Change list ready: {n} items for you to review',
     done: 'All done',

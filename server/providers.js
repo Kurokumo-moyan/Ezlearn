@@ -7,15 +7,15 @@
  * price：[$ / 1M 输入, $ / 1M 输出]，仅用于预算估算；价格会变，可用 EZLEARN_PRICE_IN / EZLEARN_PRICE_OUT 覆盖。
  */
 export const PRESETS = Object.freeze({
-  anthropic: { label: 'Anthropic Claude', kind: 'anthropic', keyEnv: 'ANTHROPIC_API_KEY', model: 'claude-opus-5-5', keyPattern: /^sk-ant-/ },
-  openai: { label: 'OpenAI GPT', kind: 'openai', keyEnv: 'OPENAI_API_KEY', baseURL: 'https://api.openai.com/v1', model: 'gpt-5', format: 'json_schema', tokenParam: 'max_completion_tokens', reasoning: true, streamUsage: true, maxOutput: 64000, price: [1.25, 10], keyPattern: /^sk-/ },
-  deepseek: { label: 'DeepSeek 深度求索', kind: 'openai', keyEnv: 'DEEPSEEK_API_KEY', baseURL: 'https://api.deepseek.com', model: 'deepseek-reasoner', format: 'json_object', tokenParam: 'max_tokens', streamUsage: true, maxOutput: 64000, price: [0.28, 0.42], keyPattern: /^sk-/ },
-  gemini: { label: 'Google Gemini', kind: 'openai', keyEnv: 'GEMINI_API_KEY', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-pro', format: 'json_schema', tokenParam: 'max_tokens', maxOutput: 64000, price: [1.25, 10] },
-  qwen: { label: '阿里通义千问（百炼）', kind: 'openai', keyEnv: 'DASHSCOPE_API_KEY', baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', format: 'json_object', tokenParam: 'max_tokens', streamUsage: true, maxOutput: 32000, price: [0.4, 1.2], keyPattern: /^sk-/ },
-  moonshot: { label: 'Moonshot Kimi', kind: 'openai', keyEnv: 'MOONSHOT_API_KEY', baseURL: 'https://api.moonshot.cn/v1', model: 'kimi-k2-0905-preview', format: 'json_object', tokenParam: 'max_tokens', maxOutput: 32000, price: [0.6, 2.5], keyPattern: /^sk-/ },
-  zhipu: { label: '智谱 GLM', kind: 'openai', keyEnv: 'ZHIPUAI_API_KEY', baseURL: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.6', format: 'json_object', tokenParam: 'max_tokens', maxOutput: 32000, price: [0.6, 2.2] },
-  openrouter: { label: 'OpenRouter（多家模型聚合）', kind: 'openai', keyEnv: 'OPENROUTER_API_KEY', baseURL: 'https://openrouter.ai/api/v1', model: 'openai/gpt-5', format: 'json_schema', tokenParam: 'max_tokens', maxOutput: 32000, price: [2, 10], keyPattern: /^sk-or-/ },
-  custom: { label: '自定义 OpenAI 兼容接口', kind: 'openai', keyEnv: 'EZLEARN_API_KEY', baseURL: '', model: '', format: 'json_object', tokenParam: 'max_tokens', maxOutput: 32000, price: [2, 10], keyOptionalOnLoopback: true },
+  anthropic: { label: 'Anthropic Claude', kind: 'anthropic', keyEnv: 'ANTHROPIC_API_KEY', model: 'claude-opus-5-5', visionModel: 'same', keyPattern: /^sk-ant-/ },
+  openai: { label: 'OpenAI GPT', kind: 'openai', keyEnv: 'OPENAI_API_KEY', baseURL: 'https://api.openai.com/v1', model: 'gpt-5', visionModel: 'same', format: 'json_schema', tokenParam: 'max_completion_tokens', reasoning: true, streamUsage: true, maxOutput: 64000, price: [1.25, 10], keyPattern: /^sk-/ },
+  deepseek: { label: 'DeepSeek 深度求索', kind: 'openai', keyEnv: 'DEEPSEEK_API_KEY', baseURL: 'https://api.deepseek.com', model: 'deepseek-reasoner', visionModel: null, format: 'json_object', tokenParam: 'max_tokens', streamUsage: true, maxOutput: 64000, price: [0.28, 0.42], keyPattern: /^sk-/ },
+  gemini: { label: 'Google Gemini', kind: 'openai', keyEnv: 'GEMINI_API_KEY', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-pro', visionModel: 'same', format: 'json_schema', tokenParam: 'max_tokens', maxOutput: 64000, price: [1.25, 10] },
+  qwen: { label: '阿里通义千问（百炼）', kind: 'openai', keyEnv: 'DASHSCOPE_API_KEY', baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', visionModel: 'qwen-vl-max', format: 'json_object', tokenParam: 'max_tokens', streamUsage: true, maxOutput: 32000, price: [0.4, 1.2], keyPattern: /^sk-/ },
+  moonshot: { label: 'Moonshot Kimi', kind: 'openai', keyEnv: 'MOONSHOT_API_KEY', baseURL: 'https://api.moonshot.cn/v1', model: 'kimi-k2-0905-preview', visionModel: 'moonshot-v1-32k-vision-preview', format: 'json_object', tokenParam: 'max_tokens', maxOutput: 32000, price: [0.6, 2.5], keyPattern: /^sk-/ },
+  zhipu: { label: '智谱 GLM', kind: 'openai', keyEnv: 'ZHIPUAI_API_KEY', baseURL: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4.6', visionModel: 'glm-4.5v', format: 'json_object', tokenParam: 'max_tokens', maxOutput: 32000, price: [0.6, 2.2] },
+  openrouter: { label: 'OpenRouter（多家模型聚合）', kind: 'openai', keyEnv: 'OPENROUTER_API_KEY', baseURL: 'https://openrouter.ai/api/v1', model: 'openai/gpt-5', visionModel: 'same', format: 'json_schema', tokenParam: 'max_tokens', maxOutput: 32000, price: [2, 10], keyPattern: /^sk-or-/ },
+  custom: { label: '自定义 OpenAI 兼容接口', kind: 'openai', keyEnv: 'EZLEARN_API_KEY', baseURL: '', model: '', visionModel: 'same', format: 'json_object', tokenParam: 'max_tokens', maxOutput: 32000, price: [2, 10], keyOptionalOnLoopback: true },
 });
 
 /** 所有可能存放密钥的环境变量名：日志脱敏用。 */

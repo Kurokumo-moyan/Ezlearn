@@ -163,6 +163,9 @@ async function settingsPage() {
   const modelSel = h('select', { 'aria-label': '模型' });
   const modelIn = h('input', { type: 'text', placeholder: '或手动输入模型名', maxlength: 100 });
   const modelMsg = h('div', { class: 'small muted' });
+  const visionIn = h('input', { type: 'text', maxlength: 100 });
+  const visionNote = h('span', { class: 'small muted' });
+  const visionRow = h('div', null, h('div', { class: 'row' }, h('span', { class: 'small' }, '图像识别模型'), visionIn), visionNote);
   const fetchBtn = h('button', { class: 'btn' }, '获取可用模型');
   const cur = () => s.providers.find((p) => p.id === provSel.value);
 
@@ -181,6 +184,11 @@ async function settingsPage() {
     clear(siteLine).add(p.key_site ? ['还没有密钥？到这里申请：', h('a', { href: p.key_site }, p.key_site)] : '填写你的接口地址、密钥和模型名（本机模型如 Ollama 可以不填密钥）。');
     urlRow.style.display = p.needs_base_url ? '' : 'none';
     modelIn.value = '';
+    visionIn.value = p.saved_vision_model || '';
+    visionIn.placeholder = p.default_vision_model === null ? '这家不支持看图：如需识别手写，请填它的视觉模型名' : (p.default_vision_model || '留空 = 用上面选的模型');
+    visionNote.textContent = p.default_vision_model === null
+      ? `${p.label} 的对话模型不能看图片。扫描件和手写批注需要能看图的模型（Claude、GPT、Gemini 都可以）。`
+      : '用来读取扫描件、手写批注和照片。一般留空即可。';
     setModels([], p.saved_model || (p.id === s.provider ? s.model : p.default_model));
     modelMsg.textContent = p.has_key || p.needs_base_url ? '' : '填好密钥后会自动获取可用的模型。';
     if (p.has_key) fetchModels(true);
@@ -221,7 +229,7 @@ async function settingsPage() {
     if (!key && !p.has_key && !(p.needs_base_url && /^http:\/\/(127\.0\.0\.1|localhost)/.test(urlIn.value.trim()))) return toast('请先粘贴 API 密钥', true);
     const model = modelIn.value.trim() || modelSel.value;
     try {
-      await api.put('/settings', { provider: p.id, ...(key ? { api_key: key } : {}), model, ...(p.needs_base_url ? { base_url: urlIn.value.trim() } : {}) });
+      await api.put('/settings', { provider: p.id, ...(key ? { api_key: key } : {}), model, vision_model: visionIn.value.trim(), ...(p.needs_base_url ? { base_url: urlIn.value.trim() } : {}) });
       toast(`已保存：${p.label} · ${model}，立即生效`);
       settingsPage();
     } catch (e) { toast(e.message, true); }
@@ -244,6 +252,7 @@ async function settingsPage() {
     h('p', { class: 'small muted' }, '密钥只保存在这台电脑上，不会显示在页面里，也不会发给除这家公司以外的任何地方。'),
     h('div', { class: 'row' }, h('span', { class: 'small' }, '3. 选择模型'), modelSel, fetchBtn),
     h('div', { class: 'row' }, modelIn),
+    visionRow,
     modelMsg,
     h('div', { class: 'row' }, saveBtn, h('span', { class: 'spacer' }), clearBtn),
     h('p', { class: 'small muted' }, '不同公司的价格和效果不同：本软件按 Claude 调校，换其他模型时"校验报告"里的警告可能多一些。生成内容时，课程资料会发送给你选的公司处理。')));
@@ -282,7 +291,7 @@ async function quitApp() {
 // ---------------- 管理页（Studio） ----------------
 async function studio(cid) {
   clearTimeout(pollTimer);
-  const d = await api.get(paths.course(cid));
+  const [d, status] = await Promise.all([api.get(paths.course(cid)), api.get('/status')]);
   const { course } = d;
   const content = plainLayout();
   const busy = d.job?.status === 'running';
@@ -308,7 +317,7 @@ async function studio(cid) {
   };
 
   // 1. 资料
-  const fileIn = h('input', { type: 'file', multiple: true, accept: '.pdf,.txt,.md,.vtt,.srt,.csv,.sql' });
+  const fileIn = h('input', { type: 'file', multiple: true, accept: '.pdf,.txt,.md,.vtt,.srt,.csv,.sql,.png,.jpg,.jpeg' });
   const roleSel = h('select', null, h('option', { value: '' }, '按文件名自动判断角色'), Object.entries(ROLE_LABEL).map(([k, v]) => h('option', { value: k }, v)));
   const weekIn = h('input', { type: 'text', placeholder: '周次（可选）' });
   const upBtn = h('button', { class: 'btn primary' }, '上传并解析');
@@ -342,16 +351,30 @@ async function studio(cid) {
         encPending ? h('span', { class: 'chip mid', title: '原文件不是 UTF-8，已自动转换了一份副本' }, `已从 ${m.encoding.label} 转换，待确认`) : null,
         m.encoding?.confirmed ? h('span', { class: 'chip good', title: '原文件不是 UTF-8，已转换并经你确认' }, `已转换（${m.encoding.label}）`) : null),
       h('td', null, sel),
-      h('td', { class: 'small' }, `${m.page_count} 页/段`, m.vision_pages ? h('span', { class: 'chip mid', title: '这些页没有可提取的文字（图片或手写），MVP 暂不做视觉识别' }, `${m.vision_pages} 页无文字`) : null, m.has_sql ? h('span', { class: 'chip good' }, 'SQL 数据集') : null),
+      h('td', { class: 'small' }, m.kind === 'image' ? '图片' : `${m.page_count} 页/段`,
+        m.vision_pages ? h('span', { class: 'chip mid', title: '这些页没有可提取的文字（扫描件、手写或图片），可以点"图像识别"读取' }, `${m.vision_pages} 页无文字`) : null,
+        m.recognised_pages ? h('span', { class: 'chip good', title: '已用图像识别读取' }, `已识别 ${m.recognised_pages} 页${m.handwriting_pages ? ` · 手写 ${m.handwriting_pages} 页` : ''}`) : null,
+        m.unclear_pages ? h('span', { class: 'chip hot', title: '模型表示这些页看不太清，请对照原件检查' }, `${m.unclear_pages} 页看不清`) : null,
+        m.has_sql ? h('span', { class: 'chip good' }, 'SQL 数据集') : null),
       h('td', { class: 'small muted' }, m.week || ''),
       h('td', null,
         encPending ? h('button', { class: 'btn primary', onclick: () => confirmEncodings(cid, [{ id: m.id, filename: m.filename }]) }, '确认文字') : null, ' ',
+        m.kind === 'pdf' || m.kind === 'image' ? h('button', { class: `btn ${m.vision_pages ? 'primary' : ''}`, disabled: busy, title: '读取扫描件、手写批注、照片里的文字', onclick: () => visionDialog(cid, [m], status, run) }, '图像识别') : null, ' ',
         h('button', { class: 'btn', onclick: () => openMaterial(cid, m.id) }, '查看'), ' ',
         h('button', { class: 'btn danger', onclick: async () => { if (confirm(`删除资料 ${m.filename}？`)) { await api.del(paths.material(cid, m.id)); studio(cid); } } }, '删除')));
   });
   content.add(h('div', { class: 'card' }, h('h3', null, '1. 资料'),
     h('p', { class: 'muted small' }, '支持 PDF、TXT/MD、录音文字稿（VTT/SRT/TXT）、SQL、CSV；Word 和 PPT 请先另存为 PDF。不是 UTF-8 编码的文本会自动转换，转换后请确认文字没有乱码。上传后可修改每份资料的角色；当期作业会被标为"不出答案"。'),
     pending.length ? h('div', { class: 'notice row' }, h('span', null, `有 ${pending.length} 个文件的文字编码已自动转换，确认没有乱码之前不会用于生成。`), h('span', { class: 'spacer' }), h('button', { class: 'btn primary', onclick: () => confirmEncodings(cid, pending.map((m) => ({ id: m.id, filename: m.filename }))) }, '逐个确认')) : null,
+    (() => {
+      const textless = d.materials.filter((m) => m.vision_pages > 0);
+      const n = textless.reduce((a, m) => a + m.vision_pages, 0);
+      if (!n) return null;
+      return h('div', { class: 'notice row' },
+        h('span', null, `有 ${n} 页没有文字（扫描件、手写或图片），现在不会用于生成。可以用图像识别把它们读出来。`), h('span', { class: 'spacer' }),
+        h('button', { class: 'btn primary', disabled: busy, onclick: () => visionDialog(cid, textless, status, run) }, '图像识别这些页'));
+    })(),
+    h('p', { class: 'small muted' }, '课件上有老师的手写批注（圈画、"这个必考"之类）时，程序提取文字会漏掉它们：请对这份课件点"图像识别"并选"识别全部页"。'),
     h('div', { class: 'row' }, fileIn, roleSel, weekIn, upBtn),
     d.materials.length ? h('div', { class: 'tbl' }, h('table', null, h('thead', null, h('tr', null, h('th', null, '文件'), h('th', null, '角色'), h('th', null, '内容'), h('th', null, '周次'), h('th', null, ''))), h('tbody', null, matRows))) : null));
 
@@ -458,6 +481,34 @@ async function confirmEncodings(cid, items) {
         h('button', { class: 'btn danger', onclick: async () => { if (!confirm(`删除 ${it.filename}？`)) return; await api.del(paths.material(cid, it.id)); close(); next(); } }, '删除这个文件')));
   };
   next();
+}
+
+/** 图像识别：选范围、看估价，再开始。 */
+function visionDialog(cid, mats, status, run) {
+  const v = status.vision || {};
+  if (!v.supported) {
+    modal('图像识别', h('p', null, `当前的 AI 公司（${status.llm.provider_label}）不能看图片。`),
+      h('p', null, '请到设置里换成 Claude、GPT 或 Gemini，或者填写这家公司的"图像识别模型"。'),
+      h('a', { class: 'btn primary', href: '#/settings' }, '去设置'));
+    return;
+  }
+  const textless = mats.reduce((a, m) => a + (m.vision_pages || 0), 0);
+  const all = mats.reduce((a, m) => a + (m.page_count || 0), 0);
+  const est = (n) => (v.usd_per_page ? `，估计约 $${(n * v.usd_per_page).toFixed(2)}` : '');
+  const opt = (value, label, checked, disabled) => h('label', { class: 'row small' }, h('input', { type: 'radio', name: 'vmode', value, checked, disabled }), label);
+  const r1 = opt('textless', `只识别没有文字的 ${textless} 页${est(textless)}`, textless > 0, textless === 0);
+  const r2 = opt('all', `识别全部 ${all} 页${est(all)}（课件上有手写批注时选这个）`, textless === 0, false);
+  const force = h('input', { type: 'checkbox' });
+  const close = modal('图像识别',
+    h('p', null, mats.length === 1 ? mats[0].filename : `${mats.length} 个文件`),
+    h('p', { class: 'small muted' }, `由 ${status.llm.provider_label} 的 ${v.model} 看每一页图片：手写内容会单独标成"【手写批注】"，看不清的字写 [?]，不会编造。原来程序提取的印刷文字保留不变。费用按页计算，以服务商账单为准。`),
+    r1, r2,
+    h('label', { class: 'row small' }, force, '已经识别过的页也重新识别'),
+    h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: () => {
+      const mode = [r1, r2].map((x) => x.querySelector('input')).find((x) => x.checked)?.value || 'all';
+      close();
+      run({ stage: 'vision', material_ids: mats.map((m) => m.id), mode, force: force.checked });
+    } }, '开始识别')));
 }
 
 function stageCard(title, state, onRun, busy) {
@@ -591,7 +642,8 @@ async function openMaterial(cid, mid, page = null, quote = null) {
   if (page) pages = m.pages.filter((p) => Math.abs(p.n - page) <= 1);
   modal(`${m.filename}（${ROLE_LABEL[m.role]}）`,
     page ? h('p', { class: 'muted small' }, `显示第 ${page} 页/段附近`) : h('p', { class: 'muted small' }, `共 ${m.pages.length} 页/段`),
-    pages.slice(0, 60).map((p) => h('div', null, h('h4', null, `${m.role === 'transcript' ? '第' : 'p.'}${p.n}${m.role === 'transcript' ? ' 段' : ''} ${p.timestamp || ''}`), highlighted(p.text, quote), p.needs_vision ? h('p', { class: 'muted small' }, '（本页无可提取文字）') : null)));
+    pages.slice(0, 60).map((p) => h('div', null, h('h4', null, `${m.role === 'transcript' ? '第' : 'p.'}${p.n}${m.role === 'transcript' ? ' 段' : ''} ${p.timestamp || ''}`), highlighted(p.text, quote), p.needs_vision ? h('p', { class: 'muted small' }, '（本页无可提取文字，可在资料表点"图像识别"）') : null,
+      p.vision?.done ? h('p', { class: 'muted small' }, `本页经过图像识别${p.vision.handwriting ? '，含手写内容' : ''}；清晰度：${{ high: '清楚', medium: '一般', low: '看不太清' }[p.vision.confidence] || ''}${p.vision.notes ? `；${p.vision.notes}` : ''}。手写内容可能有误，请对照原件。`) : null)));
 }
 
 function showEvidence(cid, e, mats) {
