@@ -34,7 +34,7 @@ npm run build:installer
 
 输出 `dist/Ezlearn-Setup-<版本>.exe` 和 `.sha256`。构建脚本会从 nuget.org 下载固定版本的 WebView2 SDK 并校验 Microsoft 签名，把当前运行的官方 `node.exe` 作为内置 Node.js 打进去，裁掉依赖里的调试符号与类型声明，并用打包后的文件真正启动一次做冒烟测试。
 
-安装程序命令行参数（测试 / 批量部署）：`/S` 静默，`/D=目录`，`/Data=数据目录`（相对路径相对于安装目录，默认 `data`），`/NoShortcuts`，`/NoRegister`，`/NoLaunch`，`/BundledNode`（强制使用内置 Node.js），`/Update`（软件内更新用：不询问，装到 `/D` 指定的原目录并重新打开）。卸载程序：`/S`，`/KeepData`。
+安装程序命令行参数（测试 / 批量部署）：`/S` 静默，`/D=目录`，`/Data=数据目录`（相对路径相对于安装目录，默认 `data`），`/NoShortcuts`，`/NoRegister`，`/NoLaunch`，`/BundledNode`（强制使用内置 Node.js），`/Update`（软件内更新用：不询问，装到 `/D` 指定的原目录并重新打开；与 `/S` 一起用时静默安装、不重新打开、不新建原来没有的桌面快捷方式）。卸载程序：`/S`，`/KeepData`。
 
 ### 发布新版本与自动更新
 
@@ -47,7 +47,7 @@ npm run build:installer
 3. `npm run release -- --notes "这次更新了什么"`：生成 `dist/release-<版本>/` 下的 `Ezlearn-Setup-<版本>.exe`、`ezlearn-update.json`（版本、文件名、大小、SHA-256、更新说明）和 `ezlearn-update.json.sig`（Ed25519 签名）。
 4. 在 GitHub 仓库新建 Release，tag 写 `v<版本>`，把这三个文件作为附件上传并发布（不要勾选 pre-release）。
 
-用户点“立即更新”后，软件下载安装包，核对签名和 SHA-256，再以 `/Update` 模式运行安装程序：自动装到原来的目录（数据和设置保留），装完重新打开。
+用户点“立即更新”后，软件在后台静默下载安装包并核对签名和 SHA-256（右下角小标签显示进度，可以照常使用），下载好后让用户选：**立即重启更新**（以 `/Update` 模式运行安装程序，显示进度窗口，装完自动重新打开）或 **关闭后更新**（下次关闭 Ezlearn 时以 `/S /Update` 静默安装，下次打开就是新版本）。两种方式都装到原来的目录，数据和设置保留。
 
 ## 模型提供商
 

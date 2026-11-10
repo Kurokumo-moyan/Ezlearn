@@ -71,7 +71,7 @@ test('check → download → ready when everything matches', async () => {
   for (let i = 0; i < 50 && U.downloadStatus().state === 'downloading'; i++) await new Promise((res) => setTimeout(res, 20));
   const st = U.downloadStatus();
   assert.equal(st.state, 'ready', st.error);
-  assert.deepEqual(fs.readFileSync(st.file), exe);
+  assert.deepEqual(fs.readFileSync(path.join(process.env.EZLEARN_DATA_DIR, 'local', 'updates', st.file)), exe);
   assert.ok(calls.every((u) => new URL(u).protocol === 'https:'));
 });
 
@@ -103,4 +103,22 @@ test('an older or equal release is not offered', async () => {
 
 test('installing is refused when not running from an installed copy', async () => {
   await assert.rejects(U.installDownloaded(), /开发版/);
+});
+
+test('"install after close" needs a verified download and an installed copy; exit does nothing otherwise', async () => {
+  assert.throws(() => U.setInstallOnExit(true), /开发版|没有下载好/);
+  assert.equal(U.downloadStatus().install_on_exit, false);
+  assert.equal(U.runPendingInstall(), false);
+  const exe = Buffer.from('MZ another installer');
+  const r = release('9.1.0', exe);
+  fakeGitHub({ 'ezlearn-update.json': r.raw, 'ezlearn-update.json.sig': r.sig, [r.file]: exe });
+  await U.checkForUpdate({ force: true });
+  U.startDownload();
+  for (let i = 0; i < 50 && U.downloadStatus().state === 'downloading'; i++) await new Promise((res) => setTimeout(res, 20));
+  assert.equal(U.downloadStatus().state, 'ready');
+  assert.equal(U.downloadStatus().file, r.file); // only the file name is exposed, not the full path
+  // still a dev checkout: refuse rather than leave a pending install that can never run
+  assert.throws(() => U.setInstallOnExit(true), /开发版/);
+  assert.equal(U.setInstallOnExit(false).install_on_exit, false);
+  assert.equal(U.runPendingInstall(), false);
 });

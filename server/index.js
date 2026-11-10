@@ -10,6 +10,7 @@ import { api } from './routes.js';
 import { llmStatus } from './llm.js';
 import { setShutdown, idleMs, touch, requestShutdown, canShutdown } from './lifecycle.js';
 import { runningJobCount } from './pipeline.js';
+import { runPendingInstall } from './updater.js';
 
 const require = createRequire(import.meta.url);
 
@@ -94,7 +95,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(path.join(
   server.requestTimeout = 5 * 60 * 1000;
 
   // 由桌面启动器（Ezlearn.exe）拉起时：窗口关掉后没有心跳、也没有任务在跑，就自动退出，不留后台进程。
-  const shutdown = () => { safeLog('Ezlearn 退出'); server.close(); setTimeout(() => process.exit(0), 1500).unref(); };
+  const shutdown = () => { safeLog('Ezlearn 退出'); runPendingInstall(); server.close(); setTimeout(() => process.exit(0), 1500).unref(); };
   if (process.env.EZLEARN_LAUNCHER === '1') {
     setShutdown(shutdown);
     touch();

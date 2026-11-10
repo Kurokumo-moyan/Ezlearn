@@ -14,7 +14,7 @@ import { PRESETS, checkBaseURL } from './providers.js';
 import { loadSettings, saveSettings, getProvider, keyTail, budgetDefault } from './settings.js';
 import { ENCODINGS, decodeAs } from './encoding.js';
 import { touch, requestShutdown, canShutdown } from './lifecycle.js';
-import { checkForUpdate, startDownload, downloadStatus, installDownloaded, updateRepo, installDir, CURRENT_VERSION } from './updater.js';
+import { checkForUpdate, startDownload, downloadStatus, installDownloaded, setInstallOnExit, updateRepo, installDir, CURRENT_VERSION } from './updater.js';
 import { seedDemo } from '../scripts/seed-demo.js';
 import {
   loadCtx, saveCourse, startJob, jobOf, runEvidence, runProfile, runExam, runPlan, runChapter,
@@ -141,6 +141,7 @@ api.get('/update/check', wrap(async (req, res) => {
 }));
 api.post('/update/download', wrap(async (_req, res) => res.json(startDownload())));
 api.get('/update/status', (_req, res) => res.json(downloadStatus()));
+api.post('/update/install-on-exit', (req, res) => res.json(setInstallOnExit(req.body?.on === true)));
 api.post('/update/install', wrap(async (_req, res) => {
   if (runningJobCount() > 0) return res.status(409).json({ error: '还有任务在运行，等它完成后再更新。', running: true });
   res.json(await installDownloaded());

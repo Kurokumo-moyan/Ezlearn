@@ -139,8 +139,38 @@ export async function checkForUpdate({ force = false } = {}) {
 
 // ---------------- 下载 ----------------
 const dl = { state: 'idle', received: 0, total: 0, version: null, file: null, error: null };
+let installOnExit = false; // 用户选了“关闭后更新”
 
-export function downloadStatus() { return { ...dl }; }
+export function downloadStatus() { return { ...dl, file: dl.file ? path.basename(dl.file) : null, install_on_exit: installOnExit }; }
+
+/** “关闭后更新”：只能在安装包已下载并校验好时打开。 */
+export function setInstallOnExit(on) {
+  if (on && (dl.state !== 'ready' || !installDir())) throw Object.assign(new Error(installDir() ? '安装包还没有下载好' : '当前是开发版运行，不能自动安装'), { status: 409 });
+  installOnExit = Boolean(on);
+  return downloadStatus();
+}
+
+/**
+ * 服务退出时调用（窗口关闭 / 空闲退出 / 点“退出”）。用户选了“关闭后更新”就同步校验后静默启动安装程序：
+ * /S 不弹窗、不重新打开，/Update 保持原来的桌面快捷方式状态。任何问题都只记日志，不阻止退出。
+ */
+export function runPendingInstall() {
+  if (!installOnExit) return false;
+  installOnExit = false;
+  try {
+    const dir = installDir();
+    const m = cached?.manifest;
+    if (!dir || dl.state !== 'ready' || !dl.file || !m || path.basename(dl.file) !== m.file) return false;
+    const h = crypto.createHash('sha256').update(fs.readFileSync(dl.file)).digest('hex');
+    if (h !== m.sha256) { safeLog('[update] install-on-exit skipped: hash mismatch'); return false; }
+    spawn(dl.file, ['/S', '/Update', `/D=${dir}`], { detached: true, stdio: 'ignore', windowsHide: true, cwd: updatesDir() }).unref();
+    safeLog(`[update] installing ${m.version} after exit`);
+    return true;
+  } catch (e) {
+    safeLog(`[update] install-on-exit failed: ${e.message}`);
+    return false;
+  }
+}
 const updatesDir = () => path.join(config.dataDir, 'local', 'updates');
 
 function sha256File(p) {
@@ -156,6 +186,7 @@ export function startDownload() {
   if (!cached?.manifest || !cached.result.newer) throw Object.assign(new Error('请先检查更新'), { status: 409 });
   const m = cached.manifest;
   const url = cached.exeUrl;
+  installOnExit = false;
   Object.assign(dl, { state: 'downloading', received: 0, total: m.size, version: m.version, file: null, error: null });
   (async () => {
     fs.mkdirSync(updatesDir(), { recursive: true });
@@ -203,8 +234,9 @@ export async function installDownloaded() {
   if ((await sha256File(dl.file)) !== m.sha256) throw Object.assign(new Error('安装包校验失败，请重新下载'), { status: 409 });
   const child = spawn(dl.file, ['/Update', `/D=${dir}`], { detached: true, stdio: 'ignore', windowsHide: false, cwd: updatesDir() });
   child.unref();
+  installOnExit = false;
   return { started: true, version: m.version };
 }
 
 /** 测试用 */
-export function _resetUpdater() { cached = null; Object.assign(dl, { state: 'idle', received: 0, total: 0, version: null, file: null, error: null }); }
+export function _resetUpdater() { cached = null; installOnExit = false; Object.assign(dl, { state: 'idle', received: 0, total: 0, version: null, file: null, error: null }); }
