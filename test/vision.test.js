@@ -90,3 +90,59 @@ test('providers without vision are reported, a vision model can be configured', 
   const st = (await S.call('GET', '/api/status')).json;
   assert.equal(typeof st.vision.supported, 'boolean');
 });
+
+test('unreadable text: guesses stored, confirmed value corrects material and generated chapter in context only', async () => {
+  const cid = (await S.call('POST', '/api/courses', { code: 'UNC', title: 'Uncertain' })).json.id;
+  const fd = new FormData();
+  fd.append('files', new Blob([PDF]), 'L1.pdf');
+  const mid = (await S.call('POST', `/api/courses/${cid}/materials`, fd)).json.created[0].id;
+  await S.call('POST', `/api/courses/${cid}/run`, { stage: 'vision', material_ids: [mid], mode: 'textless' });
+  assert.equal((await waitJob(S.call, cid)).status, 'done');
+
+  // 正文先用最可能的写法；待确认列表给出前后文与位置
+  let m = (await S.call('GET', `/api/courses/${cid}/materials/${mid}`)).json;
+  assert.match(m.pages[1].text, /第一单元 走进化学世界/);
+  const list = (await S.call('GET', `/api/courses/${cid}/uncertain`)).json;
+  assert.equal(list.length, 1);
+  assert.deepEqual(list[0].guesses, ['一', '七']);
+  assert.match(list[0].before, /第$/);
+  assert.match(list[0].after, /^单元 走进化学世界/);
+  assert.equal(list[0].region.w, 0.3);
+  assert.equal((await S.call('GET', `/api/courses/${cid}`)).json.materials[0].uncertain_pending, 1);
+
+  // 原图接口
+  const img = await fetch(`${S.base}/api/courses/${cid}/materials/${mid}/pages/2/image`, { headers: { 'X-Ezlearn-Token': S.token } });
+  assert.equal(img.headers.get('content-type'), 'image/jpeg');
+  assert.equal((await fetch(`${S.base}/api/courses/${cid}/materials/${mid}/pages/99/image`, { headers: { 'X-Ezlearn-Token': S.token } })).status, 404);
+
+  // 已生成的章节里用到了这处猜测；别处同样的"一"不能被改
+  const { writeJSON, readJSON } = await import('../server/storage.js');
+  await writeJSON(cid, {
+    id: 'ch01', number: '1', title: '走进化学世界', title_exam_lang: '', summary: '', weight: 1, group: '', week: '',
+    sources: [{ material_id: mid, pages: '1-2' }], terms: [], todos: [],
+    blocks: [
+      { type: 'heading', level: 2, id: 's1', number: '1.1', text: '第一单元 走进化学世界', text_exam_lang: '' },
+      { type: 'paragraph', rich_text: '一个原子由原子核和核外电子构成。' },
+      { type: 'quick_ref', rows: [{ concept: '单元', content: '第一单元 走进化学世界' }] },
+    ],
+  }, 'chapters', 'ch01.json');
+
+  const r = (await S.call('POST', `/api/courses/${cid}/uncertain/resolve`, { items: [{ material_id: mid, page: 2, id: 1, value: '七' }] })).json;
+  assert.equal(r.confirmed, 1);
+  assert.deepEqual(r.corrected_chapters, ['ch01']);
+  const ch = await readJSON(cid, 'chapters', 'ch01.json');
+  assert.equal(ch.blocks[0].text, '第七单元 走进化学世界');
+  assert.equal(ch.blocks[1].rich_text, '一个原子由原子核和核外电子构成。');
+  m = (await S.call('GET', `/api/courses/${cid}/materials/${mid}`)).json;
+  assert.match(m.pages[1].text, /第七单元 走进化学世界/);
+  assert.equal((await S.call('GET', `/api/courses/${cid}/uncertain`)).json.length, 0);
+  assert.equal((await S.call('GET', `/api/courses/${cid}/uncertain?all=1`)).json[0].chosen, '七');
+  assert.ok(await readJSON(cid, 'verify', 'ch01.json'), 'corrected chapter re-verified');
+  assert.equal((await S.call('POST', `/api/courses/${cid}/uncertain/resolve`, { items: [{ material_id: '../x', page: 2, id: 1, value: 'x' }] })).status, 400);
+});
+
+test('marker text: unknown markers become [?], skipped items keep the guess', async () => {
+  const { resolveMarked } = await import('../server/pipeline.js');
+  assert.equal(resolveMarked('A[[?1]]B[[?2]]C', [{ id: 1, guesses: ['x', 'y'], chosen: null }]), 'AxB[?]C');
+  assert.equal(resolveMarked('A[[?1]]B', [{ id: 1, guesses: ['x'], chosen: 'z' }]), 'AzB');
+});

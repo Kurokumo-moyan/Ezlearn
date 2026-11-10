@@ -13,6 +13,13 @@ async function req(method, url, body, isForm = false) {
   return data;
 }
 
+/** 带令牌取一张图片，返回 blob: URL（用完调用 URL.revokeObjectURL）。 */
+export async function imageURL(url) {
+  const r = await fetch(`/api${url}`, { headers: { 'X-Ezlearn-Token': TOKEN }, credentials: 'same-origin', cache: 'no-store' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return URL.createObjectURL(await r.blob());
+}
+
 export const api = {
   get: (u) => req('GET', u),
   post: (u, b) => req('POST', u, b ?? {}),

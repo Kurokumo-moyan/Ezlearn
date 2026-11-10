@@ -30,7 +30,7 @@ export function securityHeaders(_req, res, next) {
       "default-src 'self'",
       "script-src 'self' 'wasm-unsafe-eval'", // sql.js 需要编译 WASM；不允许 eval / 内联脚本
       "style-src 'self' 'unsafe-inline'", // KaTeX 输出使用内联 style 属性
-      "img-src 'self' data:",
+      "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "connect-src 'self'",
       "object-src 'none'",

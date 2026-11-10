@@ -17,7 +17,10 @@ const KW = /(not examinable|won't (be )?(assess|test|examin)|skip|important|focu
 export async function fakeLLM({ stage, user, images }) {
   switch (stage) {
     case 'S1V':
-      return { text: images?.length ? '（假模型转写）Week 3 · Linear regression · 老师手写：this is examinable' : '', handwriting: ['this is examinable'], has_handwriting: true, confidence: 'medium', notes: '' };
+      return {
+        text: images?.length ? '（假模型转写）第[[?1]]单元 走进化学世界 · Week 3 · Linear regression' : '', handwriting: ['this is examinable'], has_handwriting: true, confidence: 'medium', notes: '',
+        uncertain: images?.length ? [{ id: 1, guesses: ['一', '七'], reason: '数字被污渍遮住，按目录顺序推断', region: { x: 0.1, y: 0.08, w: 0.3, h: 0.05 } }] : [],
+      };
     case 'S2': {
       const evidence = [];
       for (const mm of user.matchAll(/<material id="([^"]+)"[^>]*>\n([\s\S]*?)\n<\/material>/g)) {

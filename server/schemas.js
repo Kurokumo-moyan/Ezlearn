@@ -119,6 +119,13 @@ export const VisionOut = z.object({
   has_handwriting: z.boolean(),
   confidence: z.enum(['high', 'medium', 'low']),
   notes: z.string().max(1000),
+  // 看不清的地方：text / handwriting 里写 [[?编号]]，这里给出根据上下文推断的 1–2 个写法
+  uncertain: z.array(z.object({
+    id: z.number().int().min(1).max(99),
+    guesses: z.array(z.string().min(1).max(200)).min(1).max(2),
+    reason: z.string().max(300),
+    region: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0).max(1), h: z.number().min(0).max(1) }).nullable(),
+  })).max(30).default([]),
 });
 
 export const ReviewOut = z.object({

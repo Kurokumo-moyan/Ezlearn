@@ -304,3 +304,19 @@ h1 .help-btn,h2 .help-btn,h3 .help-btn{position:relative;top:-2px}
 .help-pop .tbl{margin:6px 0}
 .help-pop table{font-size:12.5px}
 .help-pop td,.help-pop th{padding:4px 6px;vertical-align:top}
+
+
+/* 看不清的字：对照原图确认窗口 */
+.modal.wide{max-width:1120px}
+.unc-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;align-items:start;margin-top:8px}
+@media (max-width:820px){.unc-grid{grid-template-columns:1fr}}
+.unc-scroll{max-height:68vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+.unc-img{position:relative;width:100%;cursor:zoom-in}
+.unc-img.zoom{width:200%;cursor:zoom-out}
+.unc-img img{display:block;width:100%;height:auto}
+.unc-box{position:absolute;border:2px solid #d43a3a;background:rgba(212,58,58,.12);border-radius:3px;pointer-events:none;box-shadow:0 0 0 3px rgba(212,58,58,.18)}
+.unc-opt{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;margin:6px 0;border:1px solid var(--line);border-radius:8px;cursor:pointer;line-height:1.7}
+.unc-opt:hover{border-color:var(--accent)}
+.unc-opt input[type=text]{flex:1;min-width:0}
+.unc-opt mark{padding:0 2px}
+.unc-opt .chip{flex:none;white-space:nowrap;align-self:center}

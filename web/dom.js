@@ -1,5 +1,5 @@
 // 安全的 DOM 构造：只用 textContent / 属性白名单，永不 innerHTML。
-const ATTRS = new Set(['class', 'id', 'type', 'value', 'title', 'for', 'name', 'placeholder', 'min', 'max', 'step', 'rows', 'cols', 'checked', 'disabled', 'selected', 'open', 'colspan', 'role', 'aria-label', 'aria-expanded', 'accept', 'multiple', 'href', 'viewBox', 'd', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'points', 'r', 'cx', 'cy', 'width', 'height', 'text-anchor', 'dominant-baseline', 'tabindex', 'data-id', 'spellcheck', 'autocomplete', 'target', 'rel', 'maxlength', 'inputmode', 'aria-live', 'aria-hidden']);
+const ATTRS = new Set(['class', 'id', 'type', 'value', 'title', 'for', 'name', 'placeholder', 'min', 'max', 'step', 'rows', 'cols', 'checked', 'disabled', 'selected', 'open', 'colspan', 'role', 'aria-label', 'aria-expanded', 'accept', 'multiple', 'href', 'viewBox', 'd', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'points', 'r', 'cx', 'cy', 'width', 'height', 'text-anchor', 'dominant-baseline', 'tabindex', 'data-id', 'spellcheck', 'autocomplete', 'target', 'rel', 'maxlength', 'inputmode', 'aria-live', 'aria-hidden', 'src', 'alt']);
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SVG_TAGS = new Set(['svg', 'path', 'line', 'polyline', 'polygon', 'circle', 'text', 'g', 'rect']);
 
@@ -16,6 +16,7 @@ function setAttr(el, k, v) {
     } else if (!s.startsWith('#')) throw new Error('only hash or https links allowed');
   }
   if (k === 'target' || k === 'rel') return; // 由上面统一设置
+  if (k === 'src' && !String(v).startsWith('blob:')) throw new Error('only blob: image sources allowed');
   if (k === 'checked' || k === 'selected' || k === 'open' || k === 'disabled' || k === 'multiple') {
     if (v) el.setAttribute(k, '');
     el[k] = Boolean(v);

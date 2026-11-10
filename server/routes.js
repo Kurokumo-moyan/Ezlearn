@@ -17,8 +17,9 @@ import { touch, requestShutdown, canShutdown } from './lifecycle.js';
 import { seedDemo } from '../scripts/seed-demo.js';
 import {
   loadCtx, saveCourse, startJob, jobOf, runEvidence, runProfile, runExam, runPlan, runChapter,
-  runUpdate, applyUpdate, reverifyChapter, searchIndex, allJobs, runningJobCount, runVision,
+  runUpdate, applyUpdate, reverifyChapter, searchIndex, allJobs, runningJobCount, runVision, listUncertain, resolveUncertain,
 } from './pipeline.js';
+import { openPdf, normalizeImage } from './pagerender.js';
 
 export const api = express.Router();
 
@@ -195,6 +196,7 @@ api.get('/courses/:cid', wrap(async (req, res) => {
       ...m, page_count: pages.length, vision_pages: pages.filter((p) => p.needs_vision).length, has_sql: Boolean(sql),
       recognised_pages: pages.filter((p) => p.vision?.done).length, handwriting_pages: pages.filter((p) => p.vision?.handwriting).length,
       text_pages: pages.filter((p) => !p.needs_vision && p.text.trim().length >= 20).length,
+      uncertain_pending: pages.reduce((a, p) => a + (p.uncertain || []).filter((u) => u.status === 'pending').length, 0),
       unclear_pages: pages.filter((p) => p.vision?.confidence === 'low').length,
     })),
     evidence: ctx.evidence,
@@ -311,6 +313,35 @@ api.post('/courses/:cid/materials/:mid/encoding', wrap(async (req, res) => {
   m.encoding = { detected: m.encoding?.detected || encoding, used: encoding, label: ENCODINGS[encoding], confirmed: true, at: new Date().toISOString() };
   await writeJSON(id, m, 'materials', `${mid}.json`);
   res.json({ ok: true, pages: m.pages.length });
+}));
+
+// 某一页的图片（看不清的字确认窗口左边显示原图）
+api.get('/courses/:cid/materials/:mid/pages/:n/image', wrap(async (req, res) => {
+  const id = cid(req);
+  const mid = assertId(req.params.mid);
+  const n = Number.parseInt(req.params.n, 10);
+  const m = await readJSON(id, 'materials', `${mid}.json`);
+  if (!m || !Number.isInteger(n) || n < 1 || n > m.pages.length || !['pdf', 'image'].includes(m.kind)) return res.status(404).json({ error: 'not found' });
+  const raw = await fs.readFile(path.join(courseDir(id), 'raw', `${mid}.bin`));
+  let img;
+  if (m.kind === 'pdf') { const doc = await openPdf(raw); try { img = await doc.render(n); } finally { await doc.close(); } } else img = await normalizeImage(raw);
+  res.set('Cache-Control', 'no-store').type('image/jpeg').send(img);
+}));
+
+// 看不清的字：列出待确认项 / 提交确认结果
+api.get('/courses/:cid/uncertain', wrap(async (req, res) => {
+  res.json(await listUncertain(cid(req), { all: req.query.all === '1' }));
+}));
+
+api.post('/courses/:cid/uncertain/resolve', wrap(async (req, res) => {
+  const id = cid(req);
+  if (jobOf(id)?.status === 'running') return res.status(409).json({ error: '有任务在运行，请等它完成后再确认' });
+  const { items } = parse(z.object({ items: z.array(z.object({
+    material_id: z.string().max(64), page: z.number().int().min(1).max(5000), id: z.number().int().min(1).max(99),
+    value: z.string().trim().min(1).max(200).optional(), skip: z.boolean().optional(),
+  }).strict()).min(1).max(500) }).strict(), req.body);
+  items.forEach((x) => assertId(x.material_id));
+  res.json(await resolveUncertain(id, items));
 }));
 
 api.get('/courses/:cid/materials/:mid', wrap(async (req, res) => {

@@ -1,5 +1,5 @@
 import { h, clear, modal, toast } from './dom.js';
-import { api, paths } from './api.js';
+import { api, paths, imageURL } from './api.js';
 import { renderBlocks, rich, anchor } from './render.js';
 import { mountProgress, onJobFinished, refreshJobs, localTask } from './progress.js';
 import { mountTitlebar, setTitleContext, syncHostBackground } from './titlebar.js';
@@ -310,9 +310,19 @@ async function studio(cid) {
     busy ? h('div', { class: 'notice' }, '有任务正在运行，进度显示在窗口顶部。完成后本页会自动刷新。') : null,
   );
   if (sessionStorage.getItem('ez-open-budget') === cid) { sessionStorage.removeItem('ez-open-budget'); raiseBudget(cid, d); }
+  const uncertainCount = d.materials.reduce((a, m) => a + (m.uncertain_pending || 0), 0);
+  if (sessionStorage.getItem('ez-open-uncertain') === cid) {
+    sessionStorage.removeItem('ez-open-uncertain');
+    if (uncertainCount && !busy) setTimeout(() => uncertainDialog(cid), 300);
+  }
 
   // 任务结束后自动刷新本页
-  unsubscribeJob = onJobFinished((job) => { if (job.course_id === cid && location.hash === `#/c/${cid}`) studio(cid); });
+  unsubscribeJob = onJobFinished((job) => {
+    if (job.course_id !== cid || location.hash !== `#/c/${cid}`) return;
+    // 全部生成结束后，如果还有看不清、等确认的文字，自动弹出对比确认窗口
+    if (job.status === 'done' && ['all_chapters', 'chapter', 'vision'].includes(job.kind)) sessionStorage.setItem('ez-open-uncertain', cid);
+    studio(cid);
+  });
   const run = async (body) => {
     try { await api.post(`${paths.course(cid)}/run`, body); refreshJobs(); setTimeout(() => { if (location.hash === `#/c/${cid}`) studio(cid); }, 300); } catch (e) { toast(e.message, true); }
   };
@@ -367,6 +377,9 @@ async function studio(cid) {
   content.add(h('div', { class: 'card' }, h('h3', null, '1. 资料', helpIcon('materials')),
     h('p', { class: 'muted small' }, '支持 PDF、TXT/MD、录音文字稿（VTT/SRT/TXT）、SQL、CSV；Word 和 PPT 请先另存为 PDF。不是 UTF-8 编码的文本会自动转换，转换后请确认文字没有乱码。上传后可修改每份资料的角色；当期作业会被标为"不出答案"。'),
     pending.length ? h('div', { class: 'notice row' }, h('span', null, `有 ${pending.length} 个文件的文字编码已自动转换，确认没有乱码之前不会用于生成。`), h('span', { class: 'spacer' }), h('button', { class: 'btn primary', onclick: () => confirmEncodings(cid, pending.map((m) => ({ id: m.id, filename: m.filename }))) }, '逐个确认')) : null,
+    uncertainCount ? h('div', { class: 'notice row' },
+      h('span', null, `图像识别时有 ${uncertainCount} 处字看不清，软件按上下文猜了最可能的写法，暂时先用着。请对照原图确认一下。`, helpIcon('uncertain')), h('span', { class: 'spacer' }),
+      h('button', { class: 'btn primary', disabled: busy, onclick: () => uncertainDialog(cid) }, '对照原图确认')) : null,
     (() => {
       const textless = d.materials.filter((m) => m.vision_pages > 0);
       const n = textless.reduce((a, m) => a + m.vision_pages, 0);
@@ -513,6 +526,88 @@ function visionDialog(cid, mats, status, run) {
       close();
       run({ stage: 'vision', material_ids: mats.map((m) => m.id), mode, force: force.checked });
     } }, '开始识别')));
+}
+
+/** 看不清的字：左边原图（标出位置），右边猜测的正文，用户选一个或手动填入。每确认一处就立即保存并修正章节。 */
+async function uncertainDialog(cid) {
+  const items = await api.get(`${paths.course(cid)}/uncertain`);
+  if (!items.length) return toast('没有需要确认的地方');
+  const images = new Map(); // "mid/page" -> blob URL
+  const corrected = new Set();
+  const maybe = new Set();
+  let done = 0;
+  let i = 0;
+  const left = h('div', { class: 'unc-left' });
+  const right = h('div', { class: 'unc-right' });
+  const counter = h('span', { class: 'small muted' });
+  const body = h('div', { class: 'unc-grid' }, left, right);
+  const close = modal('对照原图确认看不清的文字', counter, body);
+  const dlg = [...document.querySelectorAll('.modal')].pop();
+  dlg?.classList.add('wide');
+  const cleanup = () => { images.forEach((u) => URL.revokeObjectURL(u)); };
+  const finish = () => {
+    clear(left); clear(right);
+    counter.textContent = '';
+    right.add(h('h4', null, `完成：已确认 ${done} 处`),
+      corrected.size ? h('p', { class: 'ok' }, `已经自动修正并重新校验的章节：${[...corrected].join('、')}`) : h('p', { class: 'small muted' }, '已生成的章节里没有需要改的地方。'),
+      maybe.size ? h('div', { class: 'notice' }, `这些章节用到了相关资料，但没找到确切的那段文字，建议检查或点"重新生成"：${[...maybe].join('、')}`) : null,
+      h('button', { class: 'btn primary', onclick: () => { cleanup(); close(); studio(cid); } }, '关闭'));
+  };
+  const show = async () => {
+    if (i >= items.length) return finish();
+    const it = items[i];
+    counter.textContent = `第 ${i + 1} / ${items.length} 处 · ${it.filename} 第 ${it.page} 页`;
+    clear(left).add(h('p', { class: 'small muted' }, '正在载入原图……'));
+    clear(right);
+    const key = `${it.material_id}/${it.page}`;
+    try {
+      if (!images.has(key)) images.set(key, await imageURL(`${paths.material(cid, it.material_id)}/pages/${it.page}/image`));
+      const box = h('div', { class: 'unc-img' }, h('img', { src: images.get(key), alt: `${it.filename} 第 ${it.page} 页` }));
+      if (it.region) {
+        const mark = h('div', { class: 'unc-box', title: '看不清的大致位置' });
+        Object.assign(mark.style, { left: `${it.region.x * 100}%`, top: `${it.region.y * 100}%`, width: `${Math.max(it.region.w, 0.02) * 100}%`, height: `${Math.max(it.region.h, 0.015) * 100}%` });
+        box.add(mark);
+      }
+      box.addEventListener('click', () => box.classList.toggle('zoom'));
+      clear(left).add(h('div', { class: 'unc-scroll' }, box), h('p', { class: 'small muted' }, it.region ? '红框是模型标出的大致位置（可能不太准）。点图片放大 / 缩小。' : '点图片放大 / 缩小。'));
+      if (it.region) setTimeout(() => box.querySelector('.unc-box')?.scrollIntoView({ block: 'center', inline: 'nearest' }), 50);
+    } catch (e) { clear(left).add(h('p', { class: 'err' }, `原图载入失败：${e.message}`)); }
+
+    const opts = it.guesses.filter((g) => g !== '[?]');
+    const custom = h('input', { type: 'text', maxlength: 200, placeholder: '都不对？在这里填正确的文字' });
+    const radios = opts.map((g, k) => {
+      const r = h('input', { type: 'radio', name: 'unc', value: g, checked: k === 0 });
+      return h('label', { class: 'unc-opt' }, r, h('span', null, it.before, h('mark', null, g), it.after), k === 0 ? h('span', { class: 'chip good' }, '最可能') : null);
+    });
+    const manual = h('input', { type: 'radio', name: 'unc', value: '__custom', checked: !opts.length });
+    custom.addEventListener('input', () => { manual.checked = true; });
+    const submit = async (payload) => {
+      try {
+        const r = await api.post(`${paths.course(cid)}/uncertain/resolve`, { items: [{ material_id: it.material_id, page: it.page, id: it.id, ...payload }] });
+        done += r.confirmed;
+        r.corrected_chapters.forEach((x) => corrected.add(x));
+        r.maybe_affected.forEach((x) => maybe.add(x));
+        i++;
+        show();
+      } catch (e) { toast(e.message, true); }
+    };
+    right.add(
+      h('p', { class: 'small' }, h('b', null, '推断理由：'), it.reason || '（无）'),
+      h('p', { class: 'small muted' }, '下面是这处前后的原文，标黄的是看不清、需要确认的部分：'),
+      radios,
+      h('label', { class: 'unc-opt' }, manual, h('span', null, '手动填入：'), custom),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn primary', onclick: () => {
+          const sel = right.querySelector('input[name=unc]:checked');
+          const value = sel?.value === '__custom' ? custom.value.trim() : sel?.value;
+          if (!value) return toast('请选一个，或在"手动填入"里写上正确的文字', true);
+          submit({ value });
+        } }, '确定'),
+        h('button', { class: 'btn', onclick: () => submit({ skip: true }) }, '跳过（保留猜测）'),
+        h('span', { class: 'spacer' }),
+        i > 0 ? h('button', { class: 'btn', onclick: () => { i--; show(); } }, '← 上一处') : null));
+  };
+  show();
 }
 
 function stageCard(title, state, onRun, busy) {
